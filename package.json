@@ -7,12 +7,19 @@
     "start": "electron .",
     "test": "node tests/run-all-tests.js"
   },
-  "keywords": ["pos", "offline", "retail", "inventory", "sqlite"],
+  "keywords": [
+    "pos",
+    "offline",
+    "retail",
+    "inventory",
+    "sqlite"
+  ],
   "author": "Cotton Club",
   "license": "UNLICENSED",
   "type": "commonjs",
   "dependencies": {
-    "bcryptjs": "^3.0.3"
+    "bcryptjs": "^3.0.3",
+    "lucide": "^1.55.0"
   },
   "devDependencies": {
     "electron": "^44.7.0"

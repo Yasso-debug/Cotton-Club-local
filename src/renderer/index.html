@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cotton Club Store | نظام المبيعات والمخزون</title>
     <link rel="stylesheet" href="styles/main.css">
+    <script src="assets/lucide.min.js"></script>
 </head>
 <body>
     <!-- ==============================================================
@@ -22,18 +23,20 @@
             <!-- Portal Switcher -->
             <div class="portal-tabs-container">
                 <button id="tabPortalAdmin" class="portal-tab-btn active" data-portal="admin">
-                    <span>🛡️</span>
+                    <i data-lucide="shield-check"></i>
                     <span>بوابة الإدارة (Admin)</span>
                 </button>
                 <button id="tabPortalCashier" class="portal-tab-btn" data-portal="cashier">
-                    <span>🏪</span>
+                    <i data-lucide="store"></i>
                     <span>بوابة الكاشير (Cashier)</span>
                 </button>
             </div>
 
             <!-- Context Callout -->
             <div id="portalInfoCard" class="portal-info-card">
-                <span class="portal-info-icon">🛡️</span>
+                <span id="portalInfoIcon" class="portal-info-icon">
+                    <i data-lucide="shield-check"></i>
+                </span>
                 <span id="portalInfoText" class="portal-info-text">
                     دخول الإدارة العامة والمستودع الرئيسي<br>
                     لوحة القيادة، المخازن المركزية، والتقارير المالية والتشغيلية.
@@ -49,7 +52,9 @@
                     </label>
                     <div class="input-with-icon-wrap">
                         <input type="text" id="loginUsername" class="input-field-light" value="ma" placeholder="اسم المستخدم..." autofocus>
-                        <span class="input-icon-lead">👤</span>
+                        <span class="input-icon-lead">
+                            <i data-lucide="user"></i>
+                        </span>
                     </div>
                 </div>
 
@@ -60,8 +65,12 @@
                     </label>
                     <div class="input-with-icon-wrap">
                         <input type="password" id="loginPassword" class="input-field-light" value="ma" placeholder="••••••••">
-                        <button type="button" id="btnTogglePassword" class="input-toggle-eye" title="إظهار/إخفاء كلمة المرور">👁️</button>
-                        <span class="input-icon-lead">🔒</span>
+                        <button type="button" id="btnTogglePassword" class="input-toggle-eye" title="إظهار/إخفاء كلمة المرور">
+                            <i data-lucide="eye" id="togglePasswordIcon"></i>
+                        </button>
+                        <span class="input-icon-lead">
+                            <i data-lucide="lock"></i>
+                        </span>
                     </div>
                 </div>
 
@@ -69,13 +78,15 @@
 
                 <button id="btnLoginSubmit" class="btn-login-submit">
                     <span id="loginBtnText">دخول لوحة الإدارة العامة</span>
-                    <span>←</span>
+                    <i data-lucide="arrow-left" class="icon-md"></i>
                 </button>
             </div>
 
             <!-- Clean Footer without any phone numbers -->
             <div class="login-clean-footer">
-                <div class="login-copyright-text">Cotton Club Store • Standalone Offline Engine © 2026</div>
+                <div class="login-copyright-text">
+                    Cotton Club Store • Standalone Offline Engine © 2026
+                </div>
             </div>
         </div>
     </div>
@@ -100,12 +111,14 @@
             </div>
 
             <div class="user-badge">
+                <i data-lucide="user-circle" class="icon-sm" style="color: var(--primary);"></i>
                 <span id="headerUserName">غير مسجل</span>
                 <span id="headerUserRole" class="user-role-tag">-</span>
             </div>
 
-            <div id="clockDisplay" style="font-size: 13px; color: var(--text-secondary); font-family: monospace; font-weight: bold;">
-                00:00:00
+            <div id="clockDisplay" style="font-size: 13px; color: var(--text-secondary); font-family: monospace; font-weight: bold; display: flex; align-items: center; gap: 6px;">
+                <i data-lucide="clock" class="icon-xs" style="color: var(--text-muted);"></i>
+                <span id="clockTime">00:00:00</span>
             </div>
         </div>
     </header>
@@ -116,41 +129,42 @@
         <aside class="app-sidebar">
             <div class="nav-menu">
                 <div class="nav-item active" data-view="pos">
-                    <span class="nav-item-icon">🛒</span>
+                    <span class="nav-item-icon"><i data-lucide="shopping-cart"></i></span>
                     <span>نقطة البيع</span>
                 </div>
                 <div class="nav-item" data-view="session">
-                    <span class="nav-item-icon">📅</span>
+                    <span class="nav-item-icon"><i data-lucide="calendar-check"></i></span>
                     <span>الوردية اليومية</span>
                 </div>
                 <div class="nav-item" data-view="inventory">
-                    <span class="nav-item-icon">📦</span>
+                    <span class="nav-item-icon"><i data-lucide="package"></i></span>
                     <span>المخزون والمنتجات</span>
                 </div>
                 <div class="nav-item" data-view="purchases">
-                    <span class="nav-item-icon">🚚</span>
+                    <span class="nav-item-icon"><i data-lucide="truck"></i></span>
                     <span>المشتريات والموردين</span>
                 </div>
                 <div class="nav-item" data-view="expenses">
-                    <span class="nav-item-icon">💸</span>
+                    <span class="nav-item-icon"><i data-lucide="receipt"></i></span>
                     <span>المصروفات النثرية</span>
                 </div>
                 <div class="nav-item" data-view="reports">
-                    <span class="nav-item-icon">📊</span>
+                    <span class="nav-item-icon"><i data-lucide="bar-chart-3"></i></span>
                     <span>التقارير والإحصائيات</span>
                 </div>
                 <div class="nav-item" data-view="settings">
-                    <span class="nav-item-icon">⚙️</span>
+                    <span class="nav-item-icon"><i data-lucide="settings"></i></span>
                     <span>الإعدادات</span>
                 </div>
             </div>
 
             <div class="sidebar-footer">
-                <div style="font-size: 11px; color: var(--text-muted); text-align: center; font-weight: bold;">
-                    F1: بحث | F4: خصم | F10: بيع
+                <div style="font-size: 11px; color: var(--text-muted); text-align: center; font-weight: bold; display: flex; align-items: center; justify-content: center; gap: 4px;">
+                    <i data-lucide="keyboard" class="icon-xs"></i>
+                    <span>F1: بحث | F4: خصم | F10: بيع</span>
                 </div>
                 <button id="btnLogout" class="btn-logout">
-                    <span>🚪</span>
+                    <i data-lucide="log-out" class="icon-sm"></i>
                     <span>تسجيل الخروج</span>
                 </button>
             </div>
@@ -191,9 +205,13 @@
                     <!-- Right: Cart & Checkout Panel -->
                     <div class="pos-right">
                         <div class="cart-header">
-                            <h3 style="font-size: 15px; font-weight: 800; color: var(--text-primary);">سلة الفاتورة الحالية</h3>
-                            <button id="btnClearCart" class="btn-secondary" style="padding: 4px 10px; font-size: 12px;">
-                                تفريغ (F12)
+                            <h3 style="font-size: 15px; font-weight: 800; color: var(--text-primary); display: flex; align-items: center; gap: 6px;">
+                                <i data-lucide="shopping-bag" class="icon-sm" style="color: var(--primary);"></i>
+                                <span>سلة الفاتورة الحالية</span>
+                            </h3>
+                            <button id="btnClearCart" class="btn-secondary" style="padding: 4px 10px; font-size: 12px; display: flex; align-items: center; gap: 4px;">
+                                <i data-lucide="trash-2" class="icon-xs"></i>
+                                <span>تفريغ (F12)</span>
                             </button>
                         </div>
 
@@ -223,13 +241,23 @@
                                 طريقة الدفع (F5):
                             </div>
                             <div class="payment-methods-grid">
-                                <button class="btn-payment-method active" data-method="cash">كاش (نقدي)</button>
-                                <button class="btn-payment-method" data-method="card">شبكة / بطاقة</button>
-                                <button class="btn-payment-method" data-method="split">دفع مجزأ</button>
+                                <button class="btn-payment-method active" data-method="cash">
+                                    <i data-lucide="banknote" class="icon-sm lead-icon"></i>
+                                    <span>كاش (نقدي)</span>
+                                </button>
+                                <button class="btn-payment-method" data-method="card">
+                                    <i data-lucide="credit-card" class="icon-sm lead-icon"></i>
+                                    <span>شبكة / بطاقة</span>
+                                </button>
+                                <button class="btn-payment-method" data-method="split">
+                                    <i data-lucide="split" class="icon-sm lead-icon"></i>
+                                    <span>دفع مجزأ</span>
+                                </button>
                             </div>
 
                             <button id="btnFinalizeSale" class="btn-checkout">
-                                <span>🖨️ إتمام البيع والطباعة (F10)</span>
+                                <i data-lucide="printer" class="icon-md lead-icon"></i>
+                                <span>إتمام البيع والطباعة (F10)</span>
                             </button>
                         </div>
                     </div>
@@ -241,11 +269,13 @@
                 <div class="view-header">
                     <h2>إدارة الوردية اليومية (Daily Session)</h2>
                     <div style="display: flex; gap: 10px;">
-                        <button id="btnOpenSessionPrompt" class="btn-primary" style="background: var(--accent-emerald);">
-                            + فتح وردية جديدة
+                        <button id="btnOpenSessionPrompt" class="btn-primary" style="background: var(--accent-emerald); display: flex; align-items: center; gap: 6px;">
+                            <i data-lucide="plus-circle" class="icon-sm"></i>
+                            <span>فتح وردية جديدة</span>
                         </button>
-                        <button id="btnCloseSessionPrompt" class="btn-secondary" style="border-color: var(--accent-rose); color: var(--accent-rose);">
-                            🔒 إغلاق الوردية الحالية
+                        <button id="btnCloseSessionPrompt" class="btn-secondary" style="border-color: var(--accent-rose); color: var(--accent-rose); display: flex; align-items: center; gap: 6px;">
+                            <i data-lucide="lock-keyhole" class="icon-sm"></i>
+                            <span>إغلاق الوردية الحالية</span>
                         </button>
                     </div>
                 </div>
@@ -303,7 +333,10 @@
                 <div class="view-header">
                     <h2>إدارة المخزون والمنتجات</h2>
                     <div style="display: flex; gap: 10px;">
-                        <button id="btnOpenNewProductModal" class="btn-primary">+ إضافة صنف جديد</button>
+                        <button id="btnOpenNewProductModal" class="btn-primary" style="display: flex; align-items: center; gap: 6px;">
+                            <i data-lucide="plus" class="icon-sm"></i>
+                            <span>إضافة صنف جديد</span>
+                        </button>
                     </div>
                 </div>
 
@@ -396,7 +429,10 @@
             <section id="view-expenses" class="view-panel">
                 <div class="view-header">
                     <h2>سندات المصروفات النثرية (من الدرج)</h2>
-                    <button id="btnOpenAddExpenseModal" class="btn-primary">+ صرف مصروف نثري</button>
+                    <button id="btnOpenAddExpenseModal" class="btn-primary" style="display: flex; align-items: center; gap: 6px;">
+                        <i data-lucide="receipt" class="icon-sm"></i>
+                        <span>صرف مصروف نثري</span>
+                    </button>
                 </div>
 
                 <div style="padding: 24px; flex: 1; display: flex; flex-direction: column;">
@@ -427,7 +463,10 @@
                         <input type="date" id="reportStartDate" class="form-control">
                         <span>إلى</span>
                         <input type="date" id="reportEndDate" class="form-control">
-                        <button id="btnRefreshReports" class="btn-primary">تحديث</button>
+                        <button id="btnRefreshReports" class="btn-primary" style="display: flex; align-items: center; gap: 6px;">
+                            <i data-lucide="refresh-cw" class="icon-sm"></i>
+                            <span>تحديث</span>
+                        </button>
                     </div>
                 </div>
 
@@ -477,7 +516,10 @@
             <section id="view-settings" class="view-panel">
                 <div class="view-header">
                     <h2>إعدادات النظام والطباعة</h2>
-                    <button id="btnSaveSettings" class="btn-primary">💾 حفظ الإعدادات</button>
+                    <button id="btnSaveSettings" class="btn-primary" style="display: flex; align-items: center; gap: 6px;">
+                        <i data-lucide="save" class="icon-sm"></i>
+                        <span>حفظ الإعدادات</span>
+                    </button>
                 </div>
 
                 <div style="padding: 24px; max-width: 650px; display: flex; flex-direction: column; gap: 16px;">
@@ -523,7 +565,7 @@
         <div class="modal-box">
             <div class="modal-header">
                 <h3>فتح وردية عمل جديدة</h3>
-                <button class="btn-del modal-close">✕</button>
+                <button class="btn-del modal-close" title="إغلاق"><i data-lucide="x" class="icon-sm"></i></button>
             </div>
             <div class="modal-body">
                 <div class="form-group">
@@ -547,7 +589,7 @@
         <div class="modal-box">
             <div class="modal-header">
                 <h3>إغلاق الوردية والتقرير النهائي (Z-Report)</h3>
-                <button class="btn-del modal-close">✕</button>
+                <button class="btn-del modal-close" title="إغلاق"><i data-lucide="x" class="icon-sm"></i></button>
             </div>
             <div class="modal-body">
                 <div id="closeSessionSummaryDetails" style="background: var(--bg-main); padding: 14px; border-radius: var(--radius-sm); font-size: 13px; display: flex; flex-direction: column; gap: 8px;">
@@ -574,7 +616,7 @@
         <div class="modal-box">
             <div class="modal-header">
                 <h3>تطبيق خصم على الفاتورة (F4)</h3>
-                <button class="btn-del modal-close">✕</button>
+                <button class="btn-del modal-close" title="إغلاق"><i data-lucide="x" class="icon-sm"></i></button>
             </div>
             <div class="modal-body">
                 <div class="form-group">
@@ -582,8 +624,9 @@
                     <input type="number" id="discountPercentInput" class="form-control" min="0" max="100" value="0">
                 </div>
                 <div id="managerOverrideSection" style="display: none; background: var(--accent-amber-bg); border: 1px solid var(--accent-amber-border); padding: 12px; border-radius: var(--radius-sm); margin-top: 10px;">
-                    <div style="color: var(--accent-amber); font-size: 13px; font-weight: bold; margin-bottom: 8px;">
-                        ⚠️ نسبة الخصم تتجاوز الحد المسموح للكاشير (5%). يلزم تفويض المدير:
+                    <div style="color: var(--accent-amber); font-size: 13px; font-weight: bold; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+                        <i data-lucide="alert-triangle" class="icon-sm"></i>
+                        <span>نسبة الخصم تتجاوز الحد المسموح للكاشير (5%). يلزم تفويض المدير:</span>
                     </div>
                     <div class="form-group">
                         <label>اسم مستخدم المدير</label>
@@ -607,14 +650,17 @@
         <div class="modal-box" style="width: 440px;">
             <div class="modal-header">
                 <h3>معاينة إيصال الفاتورة الحراري</h3>
-                <button class="btn-del modal-close">✕</button>
+                <button class="btn-del modal-close" title="إغلاق"><i data-lucide="x" class="icon-sm"></i></button>
             </div>
             <div class="modal-body" style="max-height: 480px; overflow-y: auto; background: #fff; color: #000; padding: 12px;">
                 <div id="receiptPreviewContent"></div>
             </div>
             <div class="modal-footer">
                 <button class="btn-secondary modal-close">إغلاق</button>
-                <button id="btnPrintReceiptFromPreview" class="btn-primary">🖨️ طباعة فورية</button>
+                <button id="btnPrintReceiptFromPreview" class="btn-primary" style="display: flex; align-items: center; gap: 6px;">
+                    <i data-lucide="printer" class="icon-sm"></i>
+                    <span>طباعة فورية</span>
+                </button>
             </div>
         </div>
     </div>
@@ -624,7 +670,7 @@
         <div class="modal-box">
             <div class="modal-header">
                 <h3>إضافة صنف جديد إلى المخزون</h3>
-                <button class="btn-del modal-close">✕</button>
+                <button class="btn-del modal-close" title="إغلاق"><i data-lucide="x" class="icon-sm"></i></button>
             </div>
             <div class="modal-body">
                 <div class="form-group">
@@ -672,7 +718,7 @@
         <div class="modal-box">
             <div class="modal-header">
                 <h3>صرف مصروف نثري من الدرج</h3>
-                <button class="btn-del modal-close">✕</button>
+                <button class="btn-del modal-close" title="إغلاق"><i data-lucide="x" class="icon-sm"></i></button>
             </div>
             <div class="modal-body">
                 <div class="form-group">

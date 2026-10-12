@@ -69,10 +69,27 @@ const state = {
     settings: {}
 };
 
+// Global Lucide Icon Re-hydration Helper
+function refreshIcons(container = document) {
+    if (window.lucide && typeof window.lucide.createIcons === 'function') {
+        window.lucide.createIcons({
+            root: container,
+            attrs: {
+                'stroke-width': 1.85
+            }
+        });
+    }
+}
+
 // Clock
 setInterval(() => {
-    const el = document.getElementById('clockDisplay');
-    if (el) el.innerText = new Date().toLocaleTimeString('ar-EG');
+    const timeEl = document.getElementById('clockTime');
+    if (timeEl) {
+        timeEl.innerText = new Date().toLocaleTimeString('ar-EG');
+    } else {
+        const el = document.getElementById('clockDisplay');
+        if (el) el.innerText = new Date().toLocaleTimeString('ar-EG');
+    }
 }, 1000);
 
 // Initialize App
@@ -87,6 +104,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     bindExpenseEvents();
     bindSettingsEvents();
     bindReportEvents();
+
+    // Initial Lucide Icon Rendering
+    refreshIcons();
 });
 
 /* -------------------------------------------------------------
@@ -96,6 +116,7 @@ function bindLoginPageEvents() {
     const tabAdmin = document.getElementById('tabPortalAdmin');
     const tabCashier = document.getElementById('tabPortalCashier');
     const infoText = document.getElementById('portalInfoText');
+    const infoIcon = document.getElementById('portalInfoIcon');
     const usernameInput = document.getElementById('loginUsername');
     const passwordInput = document.getElementById('loginPassword');
     const loginBtnText = document.getElementById('loginBtnText');
@@ -105,20 +126,24 @@ function bindLoginPageEvents() {
     tabAdmin.addEventListener('click', () => {
         tabAdmin.classList.add('active');
         tabCashier.classList.remove('active');
+        if (infoIcon) infoIcon.innerHTML = '<i data-lucide="shield-check"></i>';
         infoText.innerHTML = 'دخول الإدارة العامة والمستودع الرئيسي<br>لوحة القيادة، المخازن المركزية، والتقارير المالية والتشغيلية.';
         usernameInput.value = 'ma';
         passwordInput.value = 'ma';
         loginBtnText.innerText = 'دخول لوحة الإدارة العامة';
+        refreshIcons(document.getElementById('portalInfoCard'));
         usernameInput.focus();
     });
 
     tabCashier.addEventListener('click', () => {
         tabCashier.classList.add('active');
         tabAdmin.classList.remove('active');
+        if (infoIcon) infoIcon.innerHTML = '<i data-lucide="store"></i>';
         infoText.innerHTML = 'دخول نقطة البيع المباشرة (POS)<br>مسح الباركود، إصدار الفواتير الفورية، وتسليم عهدة الوردية.';
         usernameInput.value = 'co';
         passwordInput.value = 'co';
         loginBtnText.innerText = 'دخول نقطة البيع والوردية';
+        refreshIcons(document.getElementById('portalInfoCard'));
         usernameInput.focus();
     });
 
@@ -126,7 +151,8 @@ function bindLoginPageEvents() {
     toggleEye.addEventListener('click', () => {
         const isPassword = passwordInput.getAttribute('type') === 'password';
         passwordInput.setAttribute('type', isPassword ? 'text' : 'password');
-        toggleEye.innerText = isPassword ? '🙈' : '👁️';
+        toggleEye.innerHTML = `<i data-lucide="${isPassword ? 'eye-off' : 'eye'}"></i>`;
+        refreshIcons(toggleEye);
     });
 
     // Submit actions
@@ -376,13 +402,15 @@ async function loadPosProducts(searchQuery = '') {
                 </span>
             </td>
             <td style="text-align: center;">
-                <button class="btn-primary" style="padding: 4px 10px; font-size: 12px;" onclick="addProdById(${prod.id})">
-                    + إضافة
+                <button class="btn-primary" style="padding: 4px 10px; font-size: 12px; display: inline-flex; align-items: center; gap: 4px;" onclick="addProdById(${prod.id})">
+                    <i data-lucide="plus" class="icon-xs"></i>
+                    <span>إضافة</span>
                 </button>
             </td>
         `;
         tbody.appendChild(tr);
     });
+    refreshIcons(tbody);
 }
 
 // Window function for table add
@@ -439,14 +467,21 @@ function renderCart() {
                 <div class="cart-item-meta">${item.sellPrice.toFixed(2)} ج.م × ${item.quantity} = <strong style="color: var(--accent-emerald);">${lineTotal.toFixed(2)} ج.م</strong></div>
             </div>
             <div style="display: flex; align-items: center; gap: 6px;">
-                <button class="btn-qty" onclick="changeQty(${index}, -1)">-</button>
+                <button class="btn-qty" onclick="changeQty(${index}, -1)" title="تقليل الكمية">
+                    <i data-lucide="minus"></i>
+                </button>
                 <span style="font-weight: bold; width: 22px; text-align: center;">${item.quantity}</span>
-                <button class="btn-qty" onclick="changeQty(${index}, 1)">+</button>
-                <button class="btn-del" onclick="removeCartItem(${index})">✕</button>
+                <button class="btn-qty" onclick="changeQty(${index}, 1)" title="زيادة الكمية">
+                    <i data-lucide="plus"></i>
+                </button>
+                <button class="btn-del" onclick="removeCartItem(${index})" title="حذف الصنف">
+                    <i data-lucide="trash-2"></i>
+                </button>
             </div>
         `;
         container.appendChild(card);
     });
+    refreshIcons(container);
 
     const discountAmount = Math.round((subtotal * (state.discountPercent / 100)) * 100) / 100;
     const finalTotal = Math.max(0, subtotal - discountAmount);
