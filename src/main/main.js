@@ -164,7 +164,7 @@ function createWindow() {
         height: 768,
         minWidth: 1024,
         minHeight: 650,
-        title: 'نظام نادي القطن للمبيعات والمخزون | Cotton Club POS',
+        title: 'Cotton Club Store | نظام المبيعات والمخزون',
         icon: path.join(__dirname, '../renderer/assets/icon.png'),
         backgroundColor: '#0f172a',
         webPreferences: {

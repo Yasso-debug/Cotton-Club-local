@@ -19,7 +19,7 @@ class PrinterService {
             settings[row.key] = row.value;
         }
         return {
-            name: settings.store_name || 'نادي القطن - Cotton Club',
+            name: settings.store_name || 'Cotton Club Store',
             phone: settings.store_phone || '',
             address: settings.store_address || '',
             taxNumber: settings.tax_number || '',

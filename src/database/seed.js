@@ -95,7 +95,7 @@ function seedDatabase(dbManager) {
 
         // 5. Default App Settings
         const defaultSettings = [
-            ['store_name', 'نادي القطن - Cotton Club', 'اسم المنشأة التجاري'],
+            ['store_name', 'Cotton Club Store', 'اسم المنشأة التجاري'],
             ['store_phone', '01000000000', 'رقم الهاتف المطبوع على الفاتورة'],
             ['store_address', 'الفرع الرئيسي - شارع الجمهورية', 'عنوان المحل'],
             ['receipt_footer', 'شكراً لزيارتكم - البضاعة المباعة ترد وتستبدل خلال 14 يوماً بالفاتورة', 'تذييل الفاتورة'],
@@ -107,10 +107,11 @@ function seedDatabase(dbManager) {
         ];
 
         for (const [key, value, desc] of defaultSettings) {
-            const existing = db.get('SELECT key FROM app_settings WHERE key = ?', [key]);
-            if (!existing) {
-                db.run('INSERT INTO app_settings (key, value, description) VALUES (?, ?, ?)', [key, value, desc]);
-            }
+            db.run(
+                `INSERT INTO app_settings (key, value, description) VALUES (?, ?, ?)
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+                [key, value, desc]
+            );
         }
 
         return true;

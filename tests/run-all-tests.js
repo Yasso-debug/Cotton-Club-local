@@ -280,7 +280,7 @@ runTest('11. Printer: 80mm & 58mm HTML receipt formatting', () => {
     const invoice = posService.getInvoiceById(firstInvoice.id);
     const html = printerService.generateReceiptHtml(invoice);
 
-    assert.strictEqual(html.includes('نادي القطن'), true);
+    assert.strictEqual(html.includes('Cotton Club Store'), true);
     assert.strictEqual(html.includes(invoice.invoice_number), true);
     assert.strictEqual(html.includes('150.00'), true);
 });
