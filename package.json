@@ -1,0 +1,20 @@
+{
+  "name": "cotton-club-pos",
+  "version": "1.0.0",
+  "description": "Cotton Club Local Sales & Inventory Management System - Offline Desktop POS",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node tests/run-all-tests.js"
+  },
+  "keywords": ["pos", "offline", "retail", "inventory", "sqlite"],
+  "author": "Cotton Club",
+  "license": "UNLICENSED",
+  "type": "commonjs",
+  "dependencies": {
+    "bcryptjs": "^3.0.3"
+  },
+  "devDependencies": {
+    "electron": "^44.7.0"
+  }
+}

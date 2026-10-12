@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>نظام نادي القطن للمبيعات والمخزون | Cotton Club POS</title>
+    <link rel="stylesheet" href="styles/main.css">
+</head>
+<body>
+    <!-- Top Header -->
+    <header class="app-header">
+        <div class="brand">
+            <div class="brand-logo">👕</div>
+            <div class="brand-text">
+                <h1 id="headerStoreName">نادي القطن - Cotton Club</h1>
+                <span>نظام المبيعات والمخزون المحلي (Offline POS)</span>
+            </div>
+        </div>
+
+        <div class="header-status">
+            <div id="sessionIndicator" class="session-indicator closed">
+                <div class="indicator-pulse"></div>
+                <span id="sessionStatusText">الوردية مغلقة</span>
+            </div>
+
+            <div class="user-badge">
+                <span id="headerUserName">غير مسجل</span>
+                <span id="headerUserRole" class="user-role-tag">-</span>
+            </div>
+
+            <div id="clockDisplay" style="font-size: 13px; color: var(--text-secondary); font-family: monospace;">
+                00:00:00
+            </div>
+        </div>
+    </header>
+
+    <!-- App Container -->
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="app-sidebar">
+            <div class="nav-menu">
+                <div class="nav-item active" data-view="pos">
+                    <span class="nav-item-icon">🛒</span>
+                    <span>نقطة البيع</span>
+                </div>
+                <div class="nav-item" data-view="session">
+                    <span class="nav-item-icon">📅</span>
+                    <span>الوردية اليومية</span>
+                </div>
+                <div class="nav-item" data-view="inventory">
+                    <span class="nav-item-icon">📦</span>
+                    <span>المخزون والمنتجات</span>
+                </div>
+                <div class="nav-item" data-view="purchases">
+                    <span class="nav-item-icon">🚚</span>
+                    <span>المشتريات والموردين</span>
+                </div>
+                <div class="nav-item" data-view="expenses">
+                    <span class="nav-item-icon">💸</span>
+                    <span>المصروفات النثرية</span>
+                </div>
+                <div class="nav-item" data-view="reports">
+                    <span class="nav-item-icon">📊</span>
+                    <span>التقارير والإحصائيات</span>
+                </div>
+                <div class="nav-item" data-view="settings">
+                    <span class="nav-item-icon">⚙️</span>
+                    <span>الإعدادات</span>
+                </div>
+            </div>
+
+            <div class="sidebar-footer">
+                <div style="font-size: 11px; color: var(--text-muted); text-align: center;">
+                    F1: بحث | F4: خصم | F10: بيع
+                </div>
+                <button id="btnLogout" class="btn-logout">
+                    <span>🚪</span>
+                    <span>تسجيل الخروج</span>
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Workspace -->
+        <main class="app-main">
+            <!-- 1. POS View -->
+            <section id="view-pos" class="view-panel active">
+                <div class="pos-container">
+                    <!-- Left: Search & Products Table -->
+                    <div class="pos-left">
+                        <div class="search-bar-wrap">
+                            <input type="text" id="posBarcodeInput" class="input-barcode" 
+                                   placeholder="امسح الباركود أو اكتب اسم الصنف ثم اضغط Enter (F1)..." autofocus>
+                            <span class="key-hint">F1</span>
+                        </div>
+
+                        <div class="table-container">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>الباركود</th>
+                                        <th>اسم الصنف</th>
+                                        <th>القسم</th>
+                                        <th>السعر</th>
+                                        <th>المتوفر</th>
+                                        <th style="text-align: center;">إجراء</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="posProductsTableBody">
+                                    <!-- Populated dynamically -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Right: Cart & Checkout Panel -->
+                    <div class="pos-right">
+                        <div class="cart-header">
+                            <h3 style="font-size: 15px; font-weight: 700;">سلة الفاتورة الحالية</h3>
+                            <button id="btnClearCart" class="btn-secondary" style="padding: 4px 8px; font-size: 11px;">
+                                تفريغ (F12)
+                            </button>
+                        </div>
+
+                        <!-- Cart items list -->
+                        <div id="cartItemsContainer" class="cart-items-scroll">
+                            <div style="color: var(--text-muted); text-align: center; margin-top: 40px; font-size: 13px;">
+                                السلة فارغة، قم بمسح باركود لإضافة الأصناف
+                            </div>
+                        </div>
+
+                        <!-- Summary & Payment -->
+                        <div class="cart-summary-box">
+                            <div class="summary-line">
+                                <span>المجموع الفرعي:</span>
+                                <span id="cartSubtotal">0.00 ج.م</span>
+                            </div>
+                            <div class="summary-line" style="cursor: pointer;" id="btnOpenDiscountModal">
+                                <span>الخصم المطبق (F4):</span>
+                                <span id="cartDiscountDisplay" style="color: var(--accent-rose);">0.00 ج.م (0%)</span>
+                            </div>
+                            <div class="summary-line grand-total">
+                                <span>الصافي المطلوب:</span>
+                                <span id="cartFinalTotal">0.00 ج.م</span>
+                            </div>
+
+                            <div style="margin-top: 6px; font-size: 12px; color: var(--text-secondary);">
+                                طريقة الدفع (F5):
+                            </div>
+                            <div class="payment-methods-grid">
+                                <button class="btn-payment-method active" data-method="cash">كاش (نقدي)</button>
+                                <button class="btn-payment-method" data-method="card">شبكة / بطاقة</button>
+                                <button class="btn-payment-method" data-method="split">دفع مجزأ</button>
+                            </div>
+
+                            <button id="btnFinalizeSale" class="btn-checkout">
+                                <span>🖨️ إتمام البيع والطباعة (F10)</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 2. Daily Session View -->
+            <section id="view-session" class="view-panel">
+                <div class="view-header">
+                    <h2>إدارة الوردية اليومية (Daily Session)</h2>
+                    <div style="display: flex; gap: 10px;">
+                        <button id="btnOpenSessionPrompt" class="btn-primary" style="background: var(--accent-emerald);">
+                            + فتح وردية جديدة
+                        </button>
+                        <button id="btnCloseSessionPrompt" class="btn-secondary" style="border-color: var(--accent-rose); color: var(--accent-rose);">
+                            🔒 إغلاق الوردية الحالية
+                        </button>
+                    </div>
+                </div>
+
+                <div class="stats-grid">
+                    <div class="stat-card cyan">
+                        <span class="stat-label">رصيد بداية اليوم (العهدة)</span>
+                        <span id="sessionCardOpening" class="stat-value">0.00 ج.م</span>
+                    </div>
+                    <div class="stat-card emerald">
+                        <span class="stat-label">إجمالي مبيعات الوردية</span>
+                        <span id="sessionCardSales" class="stat-value">0.00 ج.م</span>
+                    </div>
+                    <div class="stat-card amber">
+                        <span class="stat-label">المصروفات النثرية</span>
+                        <span id="sessionCardExpenses" class="stat-value">0.00 ج.م</span>
+                    </div>
+                    <div class="stat-card rose">
+                        <span class="stat-label">سداد الموردين نقداً</span>
+                        <span id="sessionCardSuppliers" class="stat-value">0.00 ج.م</span>
+                    </div>
+                    <div class="stat-card emerald" style="border-color: var(--accent-emerald);">
+                        <span class="stat-label">النقدية المتوقعة بالدرج (الآن)</span>
+                        <span id="sessionCardExpected" class="stat-value" style="font-size: 28px;">0.00 ج.م</span>
+                    </div>
+                </div>
+
+                <div style="padding: 0 20px 20px 20px; flex: 1; display: flex; flex-direction: column;">
+                    <h3 style="font-size: 15px; margin-bottom: 10px;">سجل الورديات السابقة</h3>
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>رمز الوردية</th>
+                                    <th>المسؤول</th>
+                                    <th>بداية اليوم</th>
+                                    <th>النقدية المتوقعة</th>
+                                    <th>النقدية الفعلية</th>
+                                    <th>الفارق (العجز/الزيادة)</th>
+                                    <th>الحالة</th>
+                                    <th>تاريخ الفتح</th>
+                                    <th>تاريخ الإغلاق</th>
+                                </tr>
+                            </thead>
+                            <tbody id="sessionHistoryTableBody">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 3. Inventory View -->
+            <section id="view-inventory" class="view-panel">
+                <div class="view-header">
+                    <h2>إدارة المخزون والمنتجات</h2>
+                    <div style="display: flex; gap: 10px;">
+                        <button id="btnOpenNewProductModal" class="btn-primary">+ إضافة صنف جديد</button>
+                        <button id="btnOpenAdjustStockModal" class="btn-secondary">⚖️ تسوية مخزنية (جرد/تالف)</button>
+                    </div>
+                </div>
+
+                <div class="stats-grid" id="inventoryValuationGrid">
+                    <!-- Valuation summary -->
+                </div>
+
+                <div style="padding: 0 20px 10px 20px; display: flex; gap: 12px; align-items: center;">
+                    <input type="text" id="inventorySearchInput" class="form-control" style="width: 320px;" placeholder="بحث بالاسم أو الباركود...">
+                    <select id="inventoryCategoryFilter" class="form-control" style="width: 200px;">
+                        <option value="">جميع الأقسام</option>
+                    </select>
+                    <label style="display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer;">
+                        <input type="checkbox" id="chkLowStockOnly">
+                        <span>أصناف أوشكت على النفاد فقط</span>
+                    </label>
+                </div>
+
+                <div style="padding: 0 20px 20px 20px; flex: 1; display: flex; flex-direction: column;">
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>الباركود</th>
+                                    <th>اسم الصنف</th>
+                                    <th>القسم</th>
+                                    <th>سعر التكلفة</th>
+                                    <th>سعر البيع</th>
+                                    <th>الرصيد الحالي</th>
+                                    <th>حد التنبيه</th>
+                                    <th>الحالة</th>
+                                </tr>
+                            </thead>
+                            <tbody id="inventoryTableBody">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 4. Purchases View -->
+            <section id="view-purchases" class="view-panel">
+                <div class="view-header">
+                    <h2>المشتريات والموردين</h2>
+                    <div style="display: flex; gap: 10px;">
+                        <button id="btnOpenNewSupplierModal" class="btn-secondary">+ مورد جديد</button>
+                        <button id="btnOpenNewPurchaseModal" class="btn-primary">+ فاتورة شراء جديدة</button>
+                    </div>
+                </div>
+
+                <div style="padding: 20px; display: grid; grid-template-columns: 1fr 2fr; gap: 20px; flex: 1; overflow: hidden;">
+                    <!-- Suppliers list -->
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                        <h3 style="font-size: 15px;">حسابات الموردين</h3>
+                        <div class="table-container">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>المورد</th>
+                                        <th>الهاتف</th>
+                                        <th>الرصيد (المديونية)</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="suppliersTableBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Invoices list -->
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                        <h3 style="font-size: 15px;">فواتير الشراء الواردة</h3>
+                        <div class="table-container">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>رقم الفاتورة</th>
+                                        <th>المورد</th>
+                                        <th>الإجمالي</th>
+                                        <th>المدفوع</th>
+                                        <th>المتبقي</th>
+                                        <th>الحالة</th>
+                                        <th>التاريخ</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="purchaseInvoicesTableBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 5. Expenses View -->
+            <section id="view-expenses" class="view-panel">
+                <div class="view-header">
+                    <h2>سندات المصروفات النثرية (من الدرج)</h2>
+                    <button id="btnOpenAddExpenseModal" class="btn-primary">+ صرف مصروف نثري</button>
+                </div>
+
+                <div style="padding: 20px; flex: 1; display: flex; flex-direction: column;">
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>رقم السند</th>
+                                    <th>التصنيف</th>
+                                    <th>المبلغ</th>
+                                    <th>البيان والتفاصيل</th>
+                                    <th>المستلم</th>
+                                    <th>المعتمد</th>
+                                    <th>التاريخ والوقت</th>
+                                </tr>
+                            </thead>
+                            <tbody id="expensesTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 6. Reports View -->
+            <section id="view-reports" class="view-panel">
+                <div class="view-header">
+                    <h2>التقارير المالية والتحليلية</h2>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <input type="date" id="reportStartDate" class="form-control">
+                        <span>إلى</span>
+                        <input type="date" id="reportEndDate" class="form-control">
+                        <button id="btnRefreshReports" class="btn-primary">تحديث</button>
+                    </div>
+                </div>
+
+                <div class="stats-grid" id="reportsKpiGrid">
+                    <!-- Populated dynamically -->
+                </div>
+
+                <div style="padding: 0 20px 20px 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; flex: 1; overflow: hidden;">
+                    <!-- Top Selling -->
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                        <h3 style="font-size: 15px;">الأصناف الأكثر مبيعاً</h3>
+                        <div class="table-container">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>الصنف</th>
+                                        <th>الكمية المباعة</th>
+                                        <th>الإيراد</th>
+                                        <th>الربح</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="topSellingTableBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Category Sales -->
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                        <h3 style="font-size: 15px;">مبيعات الأقسام</h3>
+                        <div class="table-container">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>القسم</th>
+                                        <th>القطع المباعة</th>
+                                        <th>إجمالي القيمة</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="categorySalesTableBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 7. Settings View -->
+            <section id="view-settings" class="view-panel">
+                <div class="view-header">
+                    <h2>إعدادات النظام والطباعة</h2>
+                    <button id="btnSaveSettings" class="btn-primary">💾 حفظ الإعدادات</button>
+                </div>
+
+                <div style="padding: 24px; max-width: 650px; display: flex; flex-direction: column; gap: 16px;">
+                    <div class="form-group">
+                        <label>اسم المحل / المنشأة</label>
+                        <input type="text" id="setting_store_name" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label>رقم الهاتف المطبوع على الفاتورة</label>
+                        <input type="text" id="setting_store_phone" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label>عنوان المحل</label>
+                        <input type="text" id="setting_store_address" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label>الرقم الضريبي أو السجل التجاري</label>
+                        <input type="text" id="setting_tax_number" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label>تذييل الفاتورة المطبوعة</label>
+                        <input type="text" id="setting_receipt_footer" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label>عرض ورق طابعة الفواتير</label>
+                        <select id="setting_printer_paper_width" class="form-control">
+                            <option value="80mm">80 مم (طابعات قياسية 48 حرف)</option>
+                            <option value="58mm">58 مم (طابعات صغيرة 32 حرف)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>الحد الأقصى للخصم المسموح به للكاشير دون إذن مدير (%)</label>
+                        <input type="number" id="setting_cashier_max_discount_percent" class="form-control" min="0" max="100">
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- MODALS -->
+
+    <!-- Login Modal -->
+    <div id="modalLogin" class="modal-overlay active">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3>تسجيل الدخول إلى نقطة البيع</h3>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>اسم المستخدم</label>
+                    <input type="text" id="loginUsername" class="form-control" value="admin" autofocus>
+                </div>
+                <div class="form-group">
+                    <label>كلمة المرور</label>
+                    <input type="password" id="loginPassword" class="form-control" value="admin123">
+                </div>
+                <div id="loginErrorMsg" style="color: var(--accent-rose); font-size: 13px; display: none;"></div>
+                <div style="font-size: 12px; color: var(--text-muted); line-height: 1.5;">
+                    💡 حساب المدير: admin / admin123<br>
+                    💡 حساب الكاشير: cashier / cashier123
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="btnLoginSubmit" class="btn-primary" style="width: 100%;">دخول</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Open Session Modal -->
+    <div id="modalOpenSession" class="modal-overlay">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3>فتح وردية عمل جديدة</h3>
+                <button class="btn-del modal-close">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>رصيد بداية اليوم (عهدة الدرج النقدية)</label>
+                    <input type="number" id="openSessionCash" class="form-control" value="500" step="10">
+                </div>
+                <div class="form-group">
+                    <label>ملاحظات الفتح</label>
+                    <input type="text" id="openSessionNotes" class="form-control" placeholder="اختياري...">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary modal-close">إلغاء</button>
+                <button id="btnSubmitOpenSession" class="btn-primary" style="background: var(--accent-emerald);">تأكيد فتح الوردية</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Close Session Modal (Z-Report) -->
+    <div id="modalCloseSession" class="modal-overlay">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3>إغلاق الوردية والتقرير النهائي (Z-Report)</h3>
+                <button class="btn-del modal-close">✕</button>
+            </div>
+            <div class="modal-body">
+                <div id="closeSessionSummaryDetails" style="background: var(--bg-input); padding: 12px; border-radius: var(--radius-sm); font-size: 13px; display: flex; flex-direction: column; gap: 6px;">
+                    <!-- Expected cash breakdown -->
+                </div>
+                <div class="form-group">
+                    <label>النقدية الفعلية المحصية بالدرج (ج.م)</label>
+                    <input type="number" id="closeSessionActualCash" class="form-control" step="1" placeholder="أدخل المبلغ بعد العد اليدوي...">
+                </div>
+                <div class="form-group">
+                    <label>ملاحظات الإغلاق</label>
+                    <input type="text" id="closeSessionNotes" class="form-control" placeholder="اختياري...">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary modal-close">إلغاء</button>
+                <button id="btnSubmitCloseSession" class="btn-primary" style="background: var(--accent-rose);">إغلاق الوردية وطباعة Z-Report</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Discount Modal (F4) -->
+    <div id="modalDiscount" class="modal-overlay">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3>تطبيق خصم على الفاتورة (F4)</h3>
+                <button class="btn-del modal-close">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>نسبة الخصم المئوية (%)</label>
+                    <input type="number" id="discountPercentInput" class="form-control" min="0" max="100" value="0">
+                </div>
+                <div id="managerOverrideSection" style="display: none; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); padding: 12px; border-radius: var(--radius-sm); margin-top: 10px;">
+                    <div style="color: var(--accent-amber); font-size: 13px; font-weight: bold; margin-bottom: 8px;">
+                        ⚠️ نسبة الخصم تتجاوز الحد المسموح للكاشير (5%). يلزم تفويض المدير:
+                    </div>
+                    <div class="form-group">
+                        <label>اسم مستخدم المدير</label>
+                        <input type="text" id="overrideUsername" class="form-control">
+                    </div>
+                    <div class="form-group" style="margin-top: 6px;">
+                        <label>كلمة مرور المدير</label>
+                        <input type="password" id="overridePassword" class="form-control">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary modal-close">إلغاء</button>
+                <button id="btnApplyDiscount" class="btn-primary">تطبيق الخصم</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Receipt Preview Modal -->
+    <div id="modalReceiptPreview" class="modal-overlay">
+        <div class="modal-box" style="width: 440px;">
+            <div class="modal-header">
+                <h3>معاينة إيصال الفاتورة الحراري</h3>
+                <button class="btn-del modal-close">✕</button>
+            </div>
+            <div class="modal-body" style="max-height: 480px; overflow-y: auto; background: #fff; color: #000; padding: 10px;">
+                <div id="receiptPreviewContent"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary modal-close">إغلاق</button>
+                <button id="btnPrintReceiptFromPreview" class="btn-primary">🖨️ طباعة فورية</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Product Modal -->
+    <div id="modalNewProduct" class="modal-overlay">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3>إضافة صنف جديد إلى المخزون</h3>
+                <button class="btn-del modal-close">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>الباركود</label>
+                    <input type="text" id="prodBarcode" class="form-control" placeholder="امسح أو اكتب الباركود...">
+                </div>
+                <div class="form-group">
+                    <label>اسم الصنف</label>
+                    <input type="text" id="prodName" class="form-control" placeholder="اسم الصنف بالعربية...">
+                </div>
+                <div class="form-group">
+                    <label>القسم</label>
+                    <select id="prodCategory" class="form-control"></select>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div class="form-group">
+                        <label>سعر التكلفة (ج.م)</label>
+                        <input type="number" id="prodCost" class="form-control" min="0" step="0.5">
+                    </div>
+                    <div class="form-group">
+                        <label>سعر البيع (ج.م)</label>
+                        <input type="number" id="prodPrice" class="form-control" min="0" step="0.5">
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div class="form-group">
+                        <label>الرصيد الافتتاحي</label>
+                        <input type="number" id="prodStock" class="form-control" value="0">
+                    </div>
+                    <div class="form-group">
+                        <label>حد تنبيه النواقص</label>
+                        <input type="number" id="prodMinAlert" class="form-control" value="5">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary modal-close">إلغاء</button>
+                <button id="btnSaveNewProduct" class="btn-primary">حفظ الصنف</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Expense Modal -->
+    <div id="modalAddExpense" class="modal-overlay">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3>صرف مصروف نثري من الدرج</h3>
+                <button class="btn-del modal-close">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>المبلغ (ج.م)</label>
+                    <input type="number" id="expenseAmount" class="form-control" min="1" step="1">
+                </div>
+                <div class="form-group">
+                    <label>تصنيف المصروف</label>
+                    <select id="expenseCategory" class="form-control">
+                        <option value="ضيافة وبوفيه">ضيافة وبوفيه</option>
+                        <option value="نظافة ومطهرات">نظافة ومطهرات</option>
+                        <option value="صيانة دورية">صيانة دورية</option>
+                        <option value="مطبوعات وأدوات مكتبية">مطبوعات وأدوات مكتبية</option>
+                        <option value="نثريات متنوعة">نثريات متنوعة</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>البيان والتفاصيل</label>
+                    <input type="text" id="expenseDescription" class="form-control" placeholder="سبب الصرف بالتفصيل...">
+                </div>
+                <div class="form-group">
+                    <label>الجهة المصروف لها (المستلم)</label>
+                    <input type="text" id="expensePaidTo" class="form-control" placeholder="اسم المستلم...">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary modal-close">إلغاء</button>
+                <button id="btnSaveExpense" class="btn-primary">تأكيد الصرف</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>
