@@ -4,6 +4,59 @@
  * and keyboard shortcut bindings.
  */
 
+// Browser API Fallback (Enables instant web browser preview alongside Electron)
+if (!window.api) {
+    const rpc = async (endpoint, data = {}) => {
+        const res = await fetch(`/api/${endpoint}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        return await res.json();
+    };
+
+    window.api = {
+        login: (username, password) => rpc('auth/login', { username, password }),
+        verifyManager: (username, password) => rpc('auth/verify-manager', { username, password }),
+        listUsers: () => rpc('auth/list-users'),
+        getActiveSession: () => rpc('session/get-active'),
+        openSession: (userId, openingCash, notes) => rpc('session/open', { userId, openingCash, notes }),
+        getSessionSummary: (sessionId) => rpc('session/get-summary', { sessionId }),
+        closeSession: (sessionId, userId, actualCash, notes) => rpc('session/close', { sessionId, userId, actualCash, notes }),
+        listSessions: (limit) => rpc('session/list', { limit }),
+        searchProducts: (query, limit) => rpc('pos/search-products', { query, limit }),
+        findProductByBarcode: (barcode) => rpc('pos/find-barcode', { barcode }),
+        checkout: (saleData) => rpc('pos/checkout', saleData),
+        getInvoice: (id) => rpc('pos/get-invoice', { id }),
+        voidInvoice: (invoiceId, managerUserId, reason) => rpc('pos/void-invoice', { invoiceId, managerUserId, reason }),
+        listRecentInvoices: (limit) => rpc('pos/list-recent', { limit }),
+        listProducts: (filters) => rpc('inventory/list-products', filters),
+        createProduct: (data, userId) => rpc('inventory/create-product', { data, userId }),
+        updateProduct: (id, data, userId) => rpc('inventory/update-product', { id, data, userId }),
+        adjustStock: (data, userId, sessionId) => rpc('inventory/adjust-stock', { data, userId, sessionId }),
+        getInventoryValuation: () => rpc('inventory/valuation'),
+        listCategories: () => rpc('inventory/list-categories'),
+        createCategory: (name, desc) => rpc('inventory/create-category', { name, desc }),
+        listSuppliers: () => rpc('purchases/list-suppliers'),
+        createSupplier: (data) => rpc('purchases/create-supplier', data),
+        createPurchaseInvoice: (data, userId) => rpc('purchases/create-invoice', { data, userId }),
+        recordSupplierPayment: (data, userId) => rpc('purchases/record-payment', { data, userId }),
+        listPurchaseInvoices: (limit) => rpc('purchases/list-invoices', { limit }),
+        addExpense: (data, userId) => rpc('expenses/add', { data, userId }),
+        listSessionExpenses: (sessionId) => rpc('expenses/list-session', { sessionId }),
+        listAllExpenses: (limit) => rpc('expenses/list-all', { limit }),
+        getSalesSummary: (startDate, endDate) => rpc('reports/sales-summary', { startDate, endDate }),
+        getTopSelling: (limit, startDate, endDate) => rpc('reports/top-selling', { limit, startDate, endDate }),
+        getCategorySales: (startDate, endDate) => rpc('reports/category-sales', { startDate, endDate }),
+        getDashboardOverview: () => rpc('reports/dashboard-overview'),
+        previewReceiptHtml: (invoiceId) => rpc('printer/preview-invoice', { invoiceId }),
+        printInvoiceReceipt: (invoiceId) => rpc('printer/print-invoice', { invoiceId }),
+        printZReport: (sessionId) => rpc('printer/print-z-report', { sessionId }),
+        getSettings: () => rpc('settings/get-all'),
+        updateSettings: (settingsMap, userId) => rpc('settings/update', { settingsMap, userId })
+    };
+}
+
 // Global Application State
 const state = {
     currentUser: null,
@@ -24,6 +77,7 @@ setInterval(() => {
 
 // Initialize App
 document.addEventListener('DOMContentLoaded', async () => {
+    bindLoginPageEvents();
     bindNavigation();
     bindKeyboardShortcuts();
     bindModals();
@@ -33,17 +87,58 @@ document.addEventListener('DOMContentLoaded', async () => {
     bindExpenseEvents();
     bindSettingsEvents();
     bindReportEvents();
-
-    // Setup Login
-    document.getElementById('btnLoginSubmit').addEventListener('click', handleLogin);
-    document.getElementById('loginPassword').addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') handleLogin();
-    });
 });
 
 /* -------------------------------------------------------------
- * 1. AUTHENTICATION & SESSION LIFECYCLE
+ * 1. AUTHENTICATION & DEDICATED LOGIN PAGE
  * ------------------------------------------------------------- */
+function bindLoginPageEvents() {
+    const tabAdmin = document.getElementById('tabPortalAdmin');
+    const tabCashier = document.getElementById('tabPortalCashier');
+    const infoText = document.getElementById('portalInfoText');
+    const usernameInput = document.getElementById('loginUsername');
+    const passwordInput = document.getElementById('loginPassword');
+    const loginBtnText = document.getElementById('loginBtnText');
+    const toggleEye = document.getElementById('btnTogglePassword');
+
+    // Portal Switcher (Admin / Cashier)
+    tabAdmin.addEventListener('click', () => {
+        tabAdmin.classList.add('active');
+        tabCashier.classList.remove('active');
+        infoText.innerHTML = 'دخول الإدارة العامة والمستودع الرئيسي<br>لوحة القيادة، المخازن المركزية، والتقارير المالية والتشغيلية.';
+        usernameInput.value = 'admin';
+        passwordInput.value = 'admin123';
+        loginBtnText.innerText = 'دخول لوحة الإدارة العامة';
+        usernameInput.focus();
+    });
+
+    tabCashier.addEventListener('click', () => {
+        tabCashier.classList.add('active');
+        tabAdmin.classList.remove('active');
+        infoText.innerHTML = 'دخول نقطة البيع المباشرة (POS)<br>مسح الباركود، إصدار الفواتير الفورية، وتسليم عهدة الوردية.';
+        usernameInput.value = 'cashier';
+        passwordInput.value = 'cashier123';
+        loginBtnText.innerText = 'دخول نقطة البيع والوردية';
+        usernameInput.focus();
+    });
+
+    // Password Toggle Eye
+    toggleEye.addEventListener('click', () => {
+        const isPassword = passwordInput.getAttribute('type') === 'password';
+        passwordInput.setAttribute('type', isPassword ? 'text' : 'password');
+        toggleEye.innerText = isPassword ? '🙈' : '👁️';
+    });
+
+    // Submit actions
+    document.getElementById('btnLoginSubmit').addEventListener('click', handleLogin);
+    usernameInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') passwordInput.focus();
+    });
+    passwordInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') handleLogin();
+    });
+}
+
 async function handleLogin() {
     const username = document.getElementById('loginUsername').value.trim();
     const password = document.getElementById('loginPassword').value;
@@ -60,11 +155,16 @@ async function handleLogin() {
         state.currentUser = res.data;
         document.getElementById('headerUserName').innerText = state.currentUser.displayName;
         document.getElementById('headerUserRole').innerText = state.currentUser.role === 'admin' ? 'مدير عام' : 'كاشير';
-        document.getElementById('modalLogin').classList.remove('active');
+
+        // Hide Dedicated Login Screen
+        document.getElementById('loginScreen').style.display = 'none';
 
         await loadSettings();
         await refreshSessionState();
         await loadPosProducts();
+
+        // Switch to POS
+        switchView('pos');
     } catch (err) {
         errorEl.innerText = err.message;
         errorEl.style.display = 'block';
@@ -75,7 +175,12 @@ document.getElementById('btnLogout').addEventListener('click', () => {
     state.currentUser = null;
     state.cart = [];
     renderCart();
-    document.getElementById('modalLogin').classList.add('active');
+
+    // Show Dedicated Login Screen
+    const loginScreen = document.getElementById('loginScreen');
+    loginScreen.style.display = 'flex';
+    document.getElementById('loginPassword').value = '';
+    document.getElementById('loginErrorMsg').style.display = 'none';
 });
 
 async function refreshSessionState() {

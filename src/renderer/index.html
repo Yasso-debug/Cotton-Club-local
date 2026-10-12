@@ -7,10 +7,156 @@
     <link rel="stylesheet" href="styles/main.css">
 </head>
 <body>
+    <!-- ==============================================================
+         1. DEDICATED SPLIT-SCREEN LOGIN PAGE (MATCHING ATTACHED SCREENSHOT)
+         ============================================================== -->
+    <div id="loginScreen" class="login-screen-wrapper">
+        <!-- Form Side (Left / White) -->
+        <div class="login-form-side">
+            <div></div> <!-- Spacer -->
+
+            <div class="login-form-center">
+                <div class="login-brand-logo-wrap">
+                    <img src="assets/logo.png" alt="Cotton Club 21 Logo">
+                </div>
+
+                <h2 class="login-platform-title">منصة نادي القطن ستور</h2>
+
+                <!-- Portal Switcher -->
+                <div class="portal-tabs-container">
+                    <button id="tabPortalAdmin" class="portal-tab-btn active" data-portal="admin">
+                        <span>🛡️</span>
+                        <span>بوابة الإدارة (Admin)</span>
+                    </button>
+                    <button id="tabPortalCashier" class="portal-tab-btn" data-portal="cashier">
+                        <span>🏪</span>
+                        <span>بوابة الفرع (Cashier)</span>
+                    </button>
+                </div>
+
+                <!-- Context Callout -->
+                <div id="portalInfoCard" class="portal-info-card">
+                    <span class="portal-info-icon">🛡️</span>
+                    <span id="portalInfoText" class="portal-info-text">
+                        دخول الإدارة العامة والمستودع الرئيسي<br>
+                        لوحة القيادة، المخازن المركزية، والتقارير المالية والتشغيلية.
+                    </span>
+                </div>
+
+                <!-- Form -->
+                <div class="login-form-body">
+                    <div class="form-group">
+                        <label class="login-input-label">
+                            <span class="required-dot">*</span>
+                            <span>اسم المستخدم أو البريد الإلكتروني</span>
+                        </label>
+                        <div class="input-with-icon-wrap">
+                            <input type="text" id="loginUsername" class="input-field-light" value="admin" placeholder="اسم المستخدم..." autofocus>
+                            <span class="input-icon-lead">👤</span>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="login-input-label">
+                            <span class="required-dot">*</span>
+                            <span>كلمة المرور</span>
+                        </label>
+                        <div class="input-with-icon-wrap">
+                            <input type="password" id="loginPassword" class="input-field-light" value="admin123" placeholder="••••••••">
+                            <button type="button" id="btnTogglePassword" class="input-toggle-eye" title="إظهار/إخفاء كلمة المرور">👁️</button>
+                            <span class="input-icon-lead">🔒</span>
+                        </div>
+                    </div>
+
+                    <div id="loginErrorMsg" class="login-error-alert"></div>
+
+                    <button id="btnLoginSubmit" class="btn-login-submit">
+                        <span id="loginBtnText">دخول لوحة الإدارة العامة</span>
+                        <span>←</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Footer Support Contacts -->
+            <div class="login-support-footer">
+                <div class="support-contacts-row">
+                    <span>01095132273</span> • <span>01129115112</span> • <span>01017645959</span> • <span>01155000072</span>
+                </div>
+                <div class="support-contacts-label">للتواصل والدعم الفني المباشر</div>
+                <div class="login-copyright-text">منصة نادي القطن ستور للملابس الرجالية © 2026</div>
+            </div>
+        </div>
+
+        <!-- Showcase Side (Right / Luxurious Charcoal/Espresso Branded) -->
+        <div class="login-showcase-side">
+            <!-- Header -->
+            <div class="showcase-top-header">
+                <div class="showcase-brand-tag">
+                    <img src="assets/logo.png" alt="Cotton Club Logo" class="showcase-logo-small">
+                    <div>
+                        <div style="font-weight: 800; font-size: 15px; letter-spacing: 0.5px;">Cotton Club 21</div>
+                        <div style="font-size: 11px; color: #D8CFBF;">منظومة إدارة المتاجر والمخازن الذكية</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main Content -->
+            <div>
+                <h1 class="showcase-hero-heading">
+                    تحكم كامل ومباشر في مبيعات الفرع والمستودعات
+                </h1>
+
+                <!-- Support Grid -->
+                <div style="font-size: 12px; color: #D8CFBF; margin-bottom: 8px;">أرقام التواصل والدعم الفني:</div>
+                <div class="showcase-support-grid">
+                    <div class="showcase-support-card">📞 01017645959</div>
+                    <div class="showcase-support-card">📞 01129115112</div>
+                    <div class="showcase-support-card">📞 01155000072</div>
+                    <div class="showcase-support-card">📞 01095132273</div>
+                </div>
+
+                <!-- Feature Highlights -->
+                <div class="showcase-features-list">
+                    <div class="showcase-feature-item">
+                        <div class="feature-item-icon">📦</div>
+                        <div>
+                            <div class="feature-item-title">إدارة المخزون والباركود الذكي</div>
+                            <div class="feature-item-desc">تتبع فوري للأرصدة والمقاسات، تنبيه تلقائي بالنواقص، وتسويات دقيقة للجرد والتوالف.</div>
+                        </div>
+                    </div>
+
+                    <div class="showcase-feature-item">
+                        <div class="feature-item-icon">⚡</div>
+                        <div>
+                            <div class="feature-item-title">نقاط بيع POS فائقة السرعة</div>
+                            <div class="feature-item-desc">إصدار فواتير بمسح الباركود، خصومات مبرمجة مع تفويض الإدارة، وطباعة إيصالات حرارية 80mm/58mm.</div>
+                        </div>
+                    </div>
+
+                    <div class="showcase-feature-item">
+                        <div class="feature-item-icon">🛡️</div>
+                        <div>
+                            <div class="feature-item-title">نظام الورديات وحماية النقدية</div>
+                            <div class="feature-item-desc">مطابقة دقيقة لدرج الكاشير، تقرير إغلاق Z-Report مفصل، وأخذ نسخ احتياطية فورية ومشفرة.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Footer note -->
+            <div style="font-size: 11px; color: #8F877C; text-align: left;">
+                Cotton Club Local POS • Standalone Offline Engine • v1.0
+            </div>
+        </div>
+    </div>
+
+    <!-- ==============================================================
+         2. MAIN SYSTEM SHELL (UNLOCKED AFTER LOGIN)
+         ============================================================== -->
     <!-- Top Header -->
     <header class="app-header">
         <div class="brand">
-            <div class="brand-logo">👕</div>
+            <img src="assets/logo.png" alt="Cotton Club Logo" class="brand-logo-img">
             <div class="brand-text">
                 <h1 id="headerStoreName">نادي القطن - Cotton Club</h1>
                 <span>نظام المبيعات والمخزون المحلي (Offline POS)</span>
@@ -28,7 +174,7 @@
                 <span id="headerUserRole" class="user-role-tag">-</span>
             </div>
 
-            <div id="clockDisplay" style="font-size: 13px; color: var(--text-secondary); font-family: monospace;">
+            <div id="clockDisplay" style="font-size: 13px; color: var(--text-secondary); font-family: monospace; font-weight: bold;">
                 00:00:00
             </div>
         </div>
@@ -70,7 +216,7 @@
             </div>
 
             <div class="sidebar-footer">
-                <div style="font-size: 11px; color: var(--text-muted); text-align: center;">
+                <div style="font-size: 11px; color: var(--text-muted); text-align: center; font-weight: bold;">
                     F1: بحث | F4: خصم | F10: بيع
                 </div>
                 <button id="btnLogout" class="btn-logout">
@@ -115,8 +261,8 @@
                     <!-- Right: Cart & Checkout Panel -->
                     <div class="pos-right">
                         <div class="cart-header">
-                            <h3 style="font-size: 15px; font-weight: 700;">سلة الفاتورة الحالية</h3>
-                            <button id="btnClearCart" class="btn-secondary" style="padding: 4px 8px; font-size: 11px;">
+                            <h3 style="font-size: 15px; font-weight: 800; color: var(--text-primary);">سلة الفاتورة الحالية</h3>
+                            <button id="btnClearCart" class="btn-secondary" style="padding: 4px 10px; font-size: 12px;">
                                 تفريغ (F12)
                             </button>
                         </div>
@@ -143,7 +289,7 @@
                                 <span id="cartFinalTotal">0.00 ج.م</span>
                             </div>
 
-                            <div style="margin-top: 6px; font-size: 12px; color: var(--text-secondary);">
+                            <div style="margin-top: 6px; font-size: 12px; color: var(--text-secondary); font-weight: 600;">
                                 طريقة الدفع (F5):
                             </div>
                             <div class="payment-methods-grid">
@@ -191,14 +337,14 @@
                         <span class="stat-label">سداد الموردين نقداً</span>
                         <span id="sessionCardSuppliers" class="stat-value">0.00 ج.م</span>
                     </div>
-                    <div class="stat-card emerald" style="border-color: var(--accent-emerald);">
+                    <div class="stat-card emerald" style="border-color: var(--accent-emerald); background: #F6FCF8;">
                         <span class="stat-label">النقدية المتوقعة بالدرج (الآن)</span>
                         <span id="sessionCardExpected" class="stat-value" style="font-size: 28px;">0.00 ج.م</span>
                     </div>
                 </div>
 
-                <div style="padding: 0 20px 20px 20px; flex: 1; display: flex; flex-direction: column;">
-                    <h3 style="font-size: 15px; margin-bottom: 10px;">سجل الورديات السابقة</h3>
+                <div style="padding: 0 24px 24px 24px; flex: 1; display: flex; flex-direction: column;">
+                    <h3 style="font-size: 15px; margin-bottom: 12px; font-weight: 800;">سجل الورديات السابقة</h3>
                     <div class="table-container">
                         <table class="data-table">
                             <thead>
@@ -228,7 +374,6 @@
                     <h2>إدارة المخزون والمنتجات</h2>
                     <div style="display: flex; gap: 10px;">
                         <button id="btnOpenNewProductModal" class="btn-primary">+ إضافة صنف جديد</button>
-                        <button id="btnOpenAdjustStockModal" class="btn-secondary">⚖️ تسوية مخزنية (جرد/تالف)</button>
                     </div>
                 </div>
 
@@ -236,18 +381,18 @@
                     <!-- Valuation summary -->
                 </div>
 
-                <div style="padding: 0 20px 10px 20px; display: flex; gap: 12px; align-items: center;">
+                <div style="padding: 0 24px 12px 24px; display: flex; gap: 14px; align-items: center;">
                     <input type="text" id="inventorySearchInput" class="form-control" style="width: 320px;" placeholder="بحث بالاسم أو الباركود...">
                     <select id="inventoryCategoryFilter" class="form-control" style="width: 200px;">
                         <option value="">جميع الأقسام</option>
                     </select>
-                    <label style="display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer;">
+                    <label style="display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; cursor: pointer;">
                         <input type="checkbox" id="chkLowStockOnly">
                         <span>أصناف أوشكت على النفاد فقط</span>
                     </label>
                 </div>
 
-                <div style="padding: 0 20px 20px 20px; flex: 1; display: flex; flex-direction: column;">
+                <div style="padding: 0 24px 24px 24px; flex: 1; display: flex; flex-direction: column;">
                     <div class="table-container">
                         <table class="data-table">
                             <thead>
@@ -274,16 +419,12 @@
             <section id="view-purchases" class="view-panel">
                 <div class="view-header">
                     <h2>المشتريات والموردين</h2>
-                    <div style="display: flex; gap: 10px;">
-                        <button id="btnOpenNewSupplierModal" class="btn-secondary">+ مورد جديد</button>
-                        <button id="btnOpenNewPurchaseModal" class="btn-primary">+ فاتورة شراء جديدة</button>
-                    </div>
                 </div>
 
-                <div style="padding: 20px; display: grid; grid-template-columns: 1fr 2fr; gap: 20px; flex: 1; overflow: hidden;">
+                <div style="padding: 24px; display: grid; grid-template-columns: 1fr 2fr; gap: 20px; flex: 1; overflow: hidden;">
                     <!-- Suppliers list -->
                     <div style="display: flex; flex-direction: column; gap: 10px;">
-                        <h3 style="font-size: 15px;">حسابات الموردين</h3>
+                        <h3 style="font-size: 15px; font-weight: 800;">حسابات الموردين</h3>
                         <div class="table-container">
                             <table class="data-table">
                                 <thead>
@@ -300,7 +441,7 @@
 
                     <!-- Invoices list -->
                     <div style="display: flex; flex-direction: column; gap: 10px;">
-                        <h3 style="font-size: 15px;">فواتير الشراء الواردة</h3>
+                        <h3 style="font-size: 15px; font-weight: 800;">فواتير الشراء الواردة</h3>
                         <div class="table-container">
                             <table class="data-table">
                                 <thead>
@@ -328,7 +469,7 @@
                     <button id="btnOpenAddExpenseModal" class="btn-primary">+ صرف مصروف نثري</button>
                 </div>
 
-                <div style="padding: 20px; flex: 1; display: flex; flex-direction: column;">
+                <div style="padding: 24px; flex: 1; display: flex; flex-direction: column;">
                     <div class="table-container">
                         <table class="data-table">
                             <thead>
@@ -364,10 +505,10 @@
                     <!-- Populated dynamically -->
                 </div>
 
-                <div style="padding: 0 20px 20px 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; flex: 1; overflow: hidden;">
+                <div style="padding: 0 24px 24px 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; flex: 1; overflow: hidden;">
                     <!-- Top Selling -->
                     <div style="display: flex; flex-direction: column; gap: 10px;">
-                        <h3 style="font-size: 15px;">الأصناف الأكثر مبيعاً</h3>
+                        <h3 style="font-size: 15px; font-weight: 800;">الأصناف الأكثر مبيعاً</h3>
                         <div class="table-container">
                             <table class="data-table">
                                 <thead>
@@ -385,7 +526,7 @@
 
                     <!-- Category Sales -->
                     <div style="display: flex; flex-direction: column; gap: 10px;">
-                        <h3 style="font-size: 15px;">مبيعات الأقسام</h3>
+                        <h3 style="font-size: 15px; font-weight: 800;">مبيعات الأقسام</h3>
                         <div class="table-container">
                             <table class="data-table">
                                 <thead>
@@ -447,34 +588,6 @@
     </div>
 
     <!-- MODALS -->
-
-    <!-- Login Modal -->
-    <div id="modalLogin" class="modal-overlay active">
-        <div class="modal-box">
-            <div class="modal-header">
-                <h3>تسجيل الدخول إلى نقطة البيع</h3>
-            </div>
-            <div class="modal-body">
-                <div class="form-group">
-                    <label>اسم المستخدم</label>
-                    <input type="text" id="loginUsername" class="form-control" value="admin" autofocus>
-                </div>
-                <div class="form-group">
-                    <label>كلمة المرور</label>
-                    <input type="password" id="loginPassword" class="form-control" value="admin123">
-                </div>
-                <div id="loginErrorMsg" style="color: var(--accent-rose); font-size: 13px; display: none;"></div>
-                <div style="font-size: 12px; color: var(--text-muted); line-height: 1.5;">
-                    💡 حساب المدير: admin / admin123<br>
-                    💡 حساب الكاشير: cashier / cashier123
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button id="btnLoginSubmit" class="btn-primary" style="width: 100%;">دخول</button>
-            </div>
-        </div>
-    </div>
-
     <!-- Open Session Modal -->
     <div id="modalOpenSession" class="modal-overlay">
         <div class="modal-box">
@@ -507,7 +620,7 @@
                 <button class="btn-del modal-close">✕</button>
             </div>
             <div class="modal-body">
-                <div id="closeSessionSummaryDetails" style="background: var(--bg-input); padding: 12px; border-radius: var(--radius-sm); font-size: 13px; display: flex; flex-direction: column; gap: 6px;">
+                <div id="closeSessionSummaryDetails" style="background: var(--bg-main); padding: 14px; border-radius: var(--radius-sm); font-size: 13px; display: flex; flex-direction: column; gap: 8px;">
                     <!-- Expected cash breakdown -->
                 </div>
                 <div class="form-group">
@@ -538,7 +651,7 @@
                     <label>نسبة الخصم المئوية (%)</label>
                     <input type="number" id="discountPercentInput" class="form-control" min="0" max="100" value="0">
                 </div>
-                <div id="managerOverrideSection" style="display: none; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); padding: 12px; border-radius: var(--radius-sm); margin-top: 10px;">
+                <div id="managerOverrideSection" style="display: none; background: var(--accent-amber-bg); border: 1px solid var(--accent-amber-border); padding: 12px; border-radius: var(--radius-sm); margin-top: 10px;">
                     <div style="color: var(--accent-amber); font-size: 13px; font-weight: bold; margin-bottom: 8px;">
                         ⚠️ نسبة الخصم تتجاوز الحد المسموح للكاشير (5%). يلزم تفويض المدير:
                     </div>
@@ -566,7 +679,7 @@
                 <h3>معاينة إيصال الفاتورة الحراري</h3>
                 <button class="btn-del modal-close">✕</button>
             </div>
-            <div class="modal-body" style="max-height: 480px; overflow-y: auto; background: #fff; color: #000; padding: 10px;">
+            <div class="modal-body" style="max-height: 480px; overflow-y: auto; background: #fff; color: #000; padding: 12px;">
                 <div id="receiptPreviewContent"></div>
             </div>
             <div class="modal-footer">
