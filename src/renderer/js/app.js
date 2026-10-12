@@ -106,8 +106,8 @@ function bindLoginPageEvents() {
         tabAdmin.classList.add('active');
         tabCashier.classList.remove('active');
         infoText.innerHTML = 'دخول الإدارة العامة والمستودع الرئيسي<br>لوحة القيادة، المخازن المركزية، والتقارير المالية والتشغيلية.';
-        usernameInput.value = 'admin';
-        passwordInput.value = 'admin123';
+        usernameInput.value = 'ma';
+        passwordInput.value = 'ma';
         loginBtnText.innerText = 'دخول لوحة الإدارة العامة';
         usernameInput.focus();
     });
@@ -116,8 +116,8 @@ function bindLoginPageEvents() {
         tabCashier.classList.add('active');
         tabAdmin.classList.remove('active');
         infoText.innerHTML = 'دخول نقطة البيع المباشرة (POS)<br>مسح الباركود، إصدار الفواتير الفورية، وتسليم عهدة الوردية.';
-        usernameInput.value = 'cashier';
-        passwordInput.value = 'cashier123';
+        usernameInput.value = 'co';
+        passwordInput.value = 'co';
         loginBtnText.innerText = 'دخول نقطة البيع والوردية';
         usernameInput.focus();
     });

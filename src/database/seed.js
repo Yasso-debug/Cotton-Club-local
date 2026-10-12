@@ -7,23 +7,32 @@ const bcrypt = require('bcryptjs');
 
 function seedDatabase(dbManager) {
     return dbManager.transaction((db) => {
-        // 1. Check if users exist
-        const userCount = db.get('SELECT COUNT(*) as count FROM users');
-        if (userCount.count === 0) {
-            const adminHash = bcrypt.hashSync('admin123', 10);
-            const cashierHash = bcrypt.hashSync('cashier123', 10);
+        // 1. Ensure required admin (ma/ma) and cashier (co/co) exist
+        const maHash = bcrypt.hashSync('ma', 10);
+        const coHash = bcrypt.hashSync('co', 10);
 
+        // Upsert or insert admin 'ma'
+        const existingMa = db.get('SELECT id FROM users WHERE username = ?', ['ma']);
+        if (!existingMa) {
             db.run(
                 `INSERT INTO users (username, password_hash, display_name, role, is_active)
-                 VALUES (?, ?, ?, ?, 1)`,
-                ['admin', adminHash, 'المدير العام', 'admin']
+                 VALUES ('ma', ?, 'المدير العام (ma)', 'admin', 1)`,
+                [maHash]
             );
+        } else {
+            db.run('UPDATE users SET password_hash = ?, is_active = 1 WHERE username = ?', [maHash, 'ma']);
+        }
 
+        // Upsert or insert cashier 'co'
+        const existingCo = db.get('SELECT id FROM users WHERE username = ?', ['co']);
+        if (!existingCo) {
             db.run(
                 `INSERT INTO users (username, password_hash, display_name, role, is_active)
-                 VALUES (?, ?, ?, ?, 1)`,
-                ['cashier', cashierHash, 'كاشير المحل', 'cashier']
+                 VALUES ('co', ?, 'كاشير المحل (co)', 'cashier', 1)`,
+                [coHash]
             );
+        } else {
+            db.run('UPDATE users SET password_hash = ?, is_active = 1 WHERE username = ?', [coHash, 'co']);
         }
 
         // 2. Default Categories

@@ -66,52 +66,49 @@ body {
 }
 
 /* ==========================================================================
-   1. DEDICATED SPLIT-SCREEN LOGIN PAGE (MATCHING ATTACHED SCREENSHOT)
+   1. DEDICATED CENTERED LOGIN PAGE (MATCHING LOGO & LIGHT THEME)
    ========================================================================== */
-.login-screen-wrapper {
+.login-screen-wrapper.centered-layout {
     position: fixed;
     top: 0;
     left: 0;
     width: 100vw;
     height: 100vh;
     z-index: 1000;
-    background-color: #FFFFFF;
+    background: radial-gradient(circle at 50% 15%, #FFFFFF 0%, #F5F1E8 100%);
     display: flex;
+    align-items: center;
+    justify-content: center;
     direction: rtl;
-    overflow: hidden;
-}
-
-/* Left Form Section (White / Light) */
-.login-form-side {
-    flex: 1;
-    max-width: 50%;
-    min-width: 480px;
-    background-color: #FFFFFF;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    padding: 36px 50px;
     overflow-y: auto;
+    padding: 24px;
 }
 
-.login-form-center {
-    max-width: 420px;
-    margin: 0 auto;
+.login-card-box {
+    background: #FFFFFF;
+    border: 1.5px solid var(--border-color);
+    border-radius: 24px;
+    box-shadow: 0 16px 45px rgba(184, 101, 43, 0.1), 0 4px 16px rgba(28, 25, 23, 0.05);
     width: 100%;
+    max-width: 480px;
+    padding: 40px 38px 24px 38px;
     display: flex;
     flex-direction: column;
     align-items: center;
 }
 
 .login-brand-logo-wrap {
-    width: 110px;
-    height: 110px;
-    margin-bottom: 14px;
+    width: 135px;
+    height: 135px;
+    margin-bottom: 16px;
     border-radius: 50%;
-    box-shadow: 0 6px 18px rgba(184, 101, 43, 0.15);
+    box-shadow: 0 10px 25px rgba(184, 101, 43, 0.18);
     background: #FFFFFF;
-    padding: 4px;
-    border: 2px solid var(--border-color);
+    padding: 6px;
+    border: 3px solid #E2DBD0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .login-brand-logo-wrap img {
@@ -122,10 +119,19 @@ body {
 }
 
 .login-platform-title {
-    font-size: 24px;
+    font-size: 26px;
     font-weight: 800;
     color: var(--text-primary);
-    margin-bottom: 20px;
+    margin-bottom: 4px;
+    text-align: center;
+    letter-spacing: -0.3px;
+}
+
+.login-platform-subtitle {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 22px;
+    font-weight: 600;
     text-align: center;
 }
 
@@ -297,152 +303,19 @@ body {
     display: none;
 }
 
-/* Left Footer Contact Bar */
-.login-support-footer {
-    width: 100%;
-    border-top: 1px solid var(--border-color);
+/* Clean Centered Footer without phone numbers */
+.login-clean-footer {
+    margin-top: 24px;
     padding-top: 14px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 6px;
-}
-
-.support-contacts-row {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
-    font-size: 12px;
-    color: var(--text-secondary);
-    direction: ltr;
-}
-
-.support-contacts-label {
-    font-size: 12px;
-    color: var(--text-muted);
+    border-top: 1px solid var(--border-color);
+    width: 100%;
+    text-align: center;
 }
 
 .login-copyright-text {
     font-size: 11px;
     color: var(--text-muted);
-}
-
-/* Right Showcase Section (Dark & Luxurious Charcoal/Espresso Matching Logo) */
-.login-showcase-side {
-    flex: 1;
-    background: linear-gradient(145deg, #181513 0%, #26211E 100%);
-    color: #FFFFFF;
-    padding: 48px;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    position: relative;
-    overflow: hidden;
-}
-
-.login-showcase-side::after {
-    content: '';
-    position: absolute;
-    top: -50px;
-    right: -50px;
-    width: 250px;
-    height: 250px;
-    background: radial-gradient(circle, rgba(184, 101, 43, 0.15) 0%, transparent 70%);
-    pointer-events: none;
-}
-
-.showcase-top-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-}
-
-.showcase-brand-tag {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-}
-
-.showcase-logo-small {
-    width: 44px;
-    height: 44px;
-    border-radius: 50%;
-    border: 1.5px solid rgba(184, 101, 43, 0.4);
-}
-
-.showcase-hero-heading {
-    font-size: 26px;
-    font-weight: 800;
-    line-height: 1.4;
-    color: #FFFFFF;
-    margin: 28px 0 20px 0;
-}
-
-.showcase-support-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-    margin-bottom: 28px;
-}
-
-.showcase-support-card {
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: var(--radius-sm);
-    padding: 10px 14px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    font-size: 13px;
-    color: #E2DBD0;
-    direction: ltr;
-}
-
-.showcase-support-card:hover {
-    background: rgba(184, 101, 43, 0.15);
-    border-color: var(--primary);
-}
-
-.showcase-features-list {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-}
-
-.showcase-feature-item {
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: var(--radius-md);
-    padding: 14px 18px;
-    display: flex;
-    align-items: flex-start;
-    gap: 14px;
-    transition: all 0.2s ease;
-}
-
-.showcase-feature-item:hover {
-    background: rgba(255, 255, 255, 0.08);
-    border-color: rgba(184, 101, 43, 0.3);
-}
-
-.feature-item-icon {
-    font-size: 22px;
-    color: #E5AC80;
-}
-
-.feature-item-title {
-    font-size: 14px;
-    font-weight: 700;
-    color: #FFFFFF;
-    margin-bottom: 4px;
-}
-
-.feature-item-desc {
-    font-size: 12px;
-    color: #A8A29E;
-    line-height: 1.5;
+    font-weight: 500;
 }
 
 /* ==========================================================================

@@ -8,144 +8,74 @@
 </head>
 <body>
     <!-- ==============================================================
-         1. DEDICATED SPLIT-SCREEN LOGIN PAGE (MATCHING ATTACHED SCREENSHOT)
+         1. DEDICATED CENTERED LOGIN PAGE (MATCHING LOGO & LIGHT THEME)
          ============================================================== -->
-    <div id="loginScreen" class="login-screen-wrapper">
-        <!-- Form Side (Left / White) -->
-        <div class="login-form-side">
-            <div></div> <!-- Spacer -->
-
-            <div class="login-form-center">
-                <div class="login-brand-logo-wrap">
-                    <img src="assets/logo.png" alt="Cotton Club 21 Logo">
-                </div>
-
-                <h2 class="login-platform-title">منصة نادي القطن ستور</h2>
-
-                <!-- Portal Switcher -->
-                <div class="portal-tabs-container">
-                    <button id="tabPortalAdmin" class="portal-tab-btn active" data-portal="admin">
-                        <span>🛡️</span>
-                        <span>بوابة الإدارة (Admin)</span>
-                    </button>
-                    <button id="tabPortalCashier" class="portal-tab-btn" data-portal="cashier">
-                        <span>🏪</span>
-                        <span>بوابة الفرع (Cashier)</span>
-                    </button>
-                </div>
-
-                <!-- Context Callout -->
-                <div id="portalInfoCard" class="portal-info-card">
-                    <span class="portal-info-icon">🛡️</span>
-                    <span id="portalInfoText" class="portal-info-text">
-                        دخول الإدارة العامة والمستودع الرئيسي<br>
-                        لوحة القيادة، المخازن المركزية، والتقارير المالية والتشغيلية.
-                    </span>
-                </div>
-
-                <!-- Form -->
-                <div class="login-form-body">
-                    <div class="form-group">
-                        <label class="login-input-label">
-                            <span class="required-dot">*</span>
-                            <span>اسم المستخدم أو البريد الإلكتروني</span>
-                        </label>
-                        <div class="input-with-icon-wrap">
-                            <input type="text" id="loginUsername" class="input-field-light" value="admin" placeholder="اسم المستخدم..." autofocus>
-                            <span class="input-icon-lead">👤</span>
-                        </div>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="login-input-label">
-                            <span class="required-dot">*</span>
-                            <span>كلمة المرور</span>
-                        </label>
-                        <div class="input-with-icon-wrap">
-                            <input type="password" id="loginPassword" class="input-field-light" value="admin123" placeholder="••••••••">
-                            <button type="button" id="btnTogglePassword" class="input-toggle-eye" title="إظهار/إخفاء كلمة المرور">👁️</button>
-                            <span class="input-icon-lead">🔒</span>
-                        </div>
-                    </div>
-
-                    <div id="loginErrorMsg" class="login-error-alert"></div>
-
-                    <button id="btnLoginSubmit" class="btn-login-submit">
-                        <span id="loginBtnText">دخول لوحة الإدارة العامة</span>
-                        <span>←</span>
-                    </button>
-                </div>
+    <div id="loginScreen" class="login-screen-wrapper centered-layout">
+        <div class="login-card-box">
+            <div class="login-brand-logo-wrap">
+                <img src="assets/logo.png" alt="Cotton Club 21 Logo">
             </div>
 
-            <!-- Footer Support Contacts -->
-            <div class="login-support-footer">
-                <div class="support-contacts-row">
-                    <span>01095132273</span> • <span>01129115112</span> • <span>01017645959</span> • <span>01155000072</span>
-                </div>
-                <div class="support-contacts-label">للتواصل والدعم الفني المباشر</div>
-                <div class="login-copyright-text">منصة نادي القطن ستور للملابس الرجالية © 2026</div>
-            </div>
-        </div>
+            <h2 class="login-platform-title">منصة نادي القطن</h2>
+            <div class="login-platform-subtitle">نظام المبيعات والمخزون المحلي للملابس الرجالية</div>
 
-        <!-- Showcase Side (Right / Luxurious Charcoal/Espresso Branded) -->
-        <div class="login-showcase-side">
-            <!-- Header -->
-            <div class="showcase-top-header">
-                <div class="showcase-brand-tag">
-                    <img src="assets/logo.png" alt="Cotton Club Logo" class="showcase-logo-small">
-                    <div>
-                        <div style="font-weight: 800; font-size: 15px; letter-spacing: 0.5px;">Cotton Club 21</div>
-                        <div style="font-size: 11px; color: #D8CFBF;">منظومة إدارة المتاجر والمخازن الذكية</div>
-                    </div>
-                </div>
+            <!-- Portal Switcher -->
+            <div class="portal-tabs-container">
+                <button id="tabPortalAdmin" class="portal-tab-btn active" data-portal="admin">
+                    <span>🛡️</span>
+                    <span>بوابة الإدارة (Admin)</span>
+                </button>
+                <button id="tabPortalCashier" class="portal-tab-btn" data-portal="cashier">
+                    <span>🏪</span>
+                    <span>بوابة الكاشير (Cashier)</span>
+                </button>
             </div>
 
-            <!-- Main Content -->
-            <div>
-                <h1 class="showcase-hero-heading">
-                    تحكم كامل ومباشر في مبيعات الفرع والمستودعات
-                </h1>
-
-                <!-- Support Grid -->
-                <div style="font-size: 12px; color: #D8CFBF; margin-bottom: 8px;">أرقام التواصل والدعم الفني:</div>
-                <div class="showcase-support-grid">
-                    <div class="showcase-support-card">📞 01017645959</div>
-                    <div class="showcase-support-card">📞 01129115112</div>
-                    <div class="showcase-support-card">📞 01155000072</div>
-                    <div class="showcase-support-card">📞 01095132273</div>
-                </div>
-
-                <!-- Feature Highlights -->
-                <div class="showcase-features-list">
-                    <div class="showcase-feature-item">
-                        <div class="feature-item-icon">📦</div>
-                        <div>
-                            <div class="feature-item-title">إدارة المخزون والباركود الذكي</div>
-                            <div class="feature-item-desc">تتبع فوري للأرصدة والمقاسات، تنبيه تلقائي بالنواقص، وتسويات دقيقة للجرد والتوالف.</div>
-                        </div>
-                    </div>
-
-                    <div class="showcase-feature-item">
-                        <div class="feature-item-icon">⚡</div>
-                        <div>
-                            <div class="feature-item-title">نقاط بيع POS فائقة السرعة</div>
-                            <div class="feature-item-desc">إصدار فواتير بمسح الباركود، خصومات مبرمجة مع تفويض الإدارة، وطباعة إيصالات حرارية 80mm/58mm.</div>
-                        </div>
-                    </div>
-
-                    <div class="showcase-feature-item">
-                        <div class="feature-item-icon">🛡️</div>
-                        <div>
-                            <div class="feature-item-title">نظام الورديات وحماية النقدية</div>
-                            <div class="feature-item-desc">مطابقة دقيقة لدرج الكاشير، تقرير إغلاق Z-Report مفصل، وأخذ نسخ احتياطية فورية ومشفرة.</div>
-                        </div>
-                    </div>
-                </div>
+            <!-- Context Callout -->
+            <div id="portalInfoCard" class="portal-info-card">
+                <span class="portal-info-icon">🛡️</span>
+                <span id="portalInfoText" class="portal-info-text">
+                    دخول الإدارة العامة والمستودع الرئيسي<br>
+                    لوحة القيادة، المخازن المركزية، والتقارير المالية والتشغيلية.
+                </span>
             </div>
 
-            <!-- Footer note -->
-            <div style="font-size: 11px; color: #8F877C; text-align: left;">
-                Cotton Club Local POS • Standalone Offline Engine • v1.0
+            <!-- Form -->
+            <div class="login-form-body">
+                <div class="form-group">
+                    <label class="login-input-label">
+                        <span class="required-dot">*</span>
+                        <span>اسم المستخدم</span>
+                    </label>
+                    <div class="input-with-icon-wrap">
+                        <input type="text" id="loginUsername" class="input-field-light" value="ma" placeholder="اسم المستخدم..." autofocus>
+                        <span class="input-icon-lead">👤</span>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="login-input-label">
+                        <span class="required-dot">*</span>
+                        <span>كلمة المرور</span>
+                    </label>
+                    <div class="input-with-icon-wrap">
+                        <input type="password" id="loginPassword" class="input-field-light" value="ma" placeholder="••••••••">
+                        <button type="button" id="btnTogglePassword" class="input-toggle-eye" title="إظهار/إخفاء كلمة المرور">👁️</button>
+                        <span class="input-icon-lead">🔒</span>
+                    </div>
+                </div>
+
+                <div id="loginErrorMsg" class="login-error-alert"></div>
+
+                <button id="btnLoginSubmit" class="btn-login-submit">
+                    <span id="loginBtnText">دخول لوحة الإدارة العامة</span>
+                    <span>←</span>
+                </button>
+            </div>
+
+            <!-- Clean Footer without any phone numbers -->
+            <div class="login-clean-footer">
+                <div class="login-copyright-text">Cotton Club Menswear • Standalone Offline Engine © 2026</div>
             </div>
         </div>
     </div>

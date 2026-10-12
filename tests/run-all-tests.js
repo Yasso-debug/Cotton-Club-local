@@ -55,24 +55,24 @@ runTest('1. Schema creation and database seed', () => {
 const authService = new AuthService(db);
 runTest('2. Authentication with valid & invalid credentials', () => {
     // Valid admin login
-    const adminUser = authService.login('admin', 'admin123');
+    const adminUser = authService.login('ma', 'ma');
     assert.strictEqual(adminUser.role, 'admin');
-    assert.strictEqual(adminUser.username, 'admin');
+    assert.strictEqual(adminUser.username, 'ma');
 
     // Valid cashier login
-    const cashierUser = authService.login('cashier', 'cashier123');
+    const cashierUser = authService.login('co', 'co');
     assert.strictEqual(cashierUser.role, 'cashier');
 
     // Invalid password should throw
     assert.throws(() => {
-        authService.login('admin', 'wrongpassword');
+        authService.login('ma', 'wrongpassword');
     }, /غير صحيحة/);
 
     // Manager override check
-    const overrideSuccess = authService.verifyManagerOverride('admin', 'admin123');
+    const overrideSuccess = authService.verifyManagerOverride('ma', 'ma');
     assert.strictEqual(overrideSuccess.success, true);
 
-    const overrideFail = authService.verifyManagerOverride('cashier', 'cashier123');
+    const overrideFail = authService.verifyManagerOverride('co', 'co');
     assert.strictEqual(overrideFail.success, false, 'Cashier cannot provide manager override');
 });
 
@@ -150,7 +150,7 @@ runTest('5. POS: Enforce Cashier <= 5% discount limit', () => {
         items: [{ productId: product.id, quantity: 1 }],
         discountPercent: 10,
         paymentMethod: 'card',
-        managerOverride: { username: 'admin', password: 'admin123' }
+        managerOverride: { username: 'ma', password: 'ma' }
     });
 
     assert.strictEqual(approvedSale.discount_percent, 10);
