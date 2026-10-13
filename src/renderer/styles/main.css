@@ -475,92 +475,80 @@ body {
     font-weight: 700;
 }
 
-/* Sidebar */
+/* Layout & Shell (Full-Width) */
 .app-container {
     display: flex;
     flex: 1;
+    width: 100%;
     overflow: hidden;
 }
 
-.app-sidebar {
-    width: 220px;
-    background-color: #FFFFFF;
-    border-left: 1.5px solid var(--border-color);
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    padding: 14px 10px;
-    box-shadow: 2px 0 6px rgba(0, 0, 0, 0.02);
-}
-
-.nav-menu {
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-}
-
-.nav-item {
-    display: flex;
+/* Header Action Buttons */
+.btn-header-logout {
+    display: inline-flex;
     align-items: center;
-    gap: 12px;
-    padding: 11px 14px;
-    border-radius: var(--radius-md);
-    color: var(--text-secondary);
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.15s ease;
-}
-
-.nav-item:hover {
-    background-color: var(--bg-main);
-    color: var(--text-primary);
-}
-
-.nav-item.active {
-    background-color: var(--primary);
-    color: #FFFFFF;
-    box-shadow: 0 4px 12px rgba(184, 101, 43, 0.3);
-}
-
-.nav-item-icon {
-    font-size: 18px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 22px;
-}
-
-.sidebar-footer {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    padding-top: 12px;
-    border-top: 1px solid var(--border-color);
-}
-
-.btn-logout {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 10px 14px;
-    border-radius: var(--radius-md);
-    background: transparent;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: var(--radius-sm);
+    background: var(--accent-rose-bg);
     border: 1px solid var(--accent-rose-border);
     color: var(--accent-rose);
-    cursor: pointer;
     font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-header-logout:hover {
+    background: var(--accent-rose);
+    color: #FFFFFF;
+    box-shadow: 0 4px 12px rgba(225, 29, 72, 0.25);
+    transform: translateY(-1px);
+}
+
+.header-shortcuts-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: var(--radius-sm);
+    background: var(--bg-main);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    font-size: 11.5px;
     font-weight: 600;
-    transition: all 0.15s;
+    font-family: monospace;
 }
 
-.btn-logout:hover {
-    background: var(--accent-rose-bg);
+/* Standardized Back to Hub Button for all Views */
+.btn-back-hub {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 16px;
+    background: #FFFFFF;
+    border: 1.5px solid var(--border-color);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: var(--shadow-sm);
 }
 
-/* App Main */
+.btn-back-hub:hover {
+    background: var(--primary-light);
+    border-color: var(--primary);
+    color: var(--primary);
+    transform: translateX(3px);
+    box-shadow: 0 4px 12px rgba(184, 101, 43, 0.15);
+}
+
+/* App Main (Full-Width Workspace) */
 .app-main {
     flex: 1;
+    width: 100%;
     overflow-y: auto;
     background-color: var(--bg-main);
     display: flex;
@@ -1106,28 +1094,35 @@ table.data-table tr:hover {
     border: 1px solid var(--primary-border);
 }
 
+/* ==========================================================================
+   ELEVATED HOVER CARDS (ROLE LANDING DASHBOARD UI/UX)
+   ========================================================================== */
 .hub-cards-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
-    gap: 20px;
+    grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+    gap: 22px;
+    max-width: 1400px;
+    margin: 0 auto;
 }
 
 /* Premium Interactive Hover Card */
 .hover-hub-card {
     background: #FFFFFF;
     border: 1.5px solid var(--border-color);
-    border-radius: var(--radius-lg);
-    padding: 22px;
+    border-radius: 18px;
+    padding: 24px;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    min-height: 200px;
+    min-height: 220px;
     cursor: pointer;
     position: relative;
     overflow: hidden;
-    box-shadow: var(--shadow-sm);
-    transition: all 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+    box-shadow: 0 4px 14px rgba(28, 25, 23, 0.04);
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
     direction: rtl;
+    user-select: none;
+    outline: none;
 }
 
 .hover-hub-card::before {
@@ -1137,108 +1132,206 @@ table.data-table tr:hover {
     right: 0;
     left: 0;
     height: 4px;
-    background: linear-gradient(90deg, var(--primary), #DFA274);
-    opacity: 0;
-    transition: opacity 0.25s ease;
-}
-
-.hover-hub-card:hover {
-    transform: translateY(-5px);
-    border-color: var(--primary);
-    box-shadow: 0 16px 36px rgba(184, 101, 43, 0.12), 0 4px 12px rgba(28, 25, 23, 0.04);
-}
-
-.hover-hub-card:hover::before {
-    opacity: 1;
-}
-
-.card-top-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: 14px;
-}
-
-.card-icon-box {
-    width: 50px;
-    height: 50px;
-    border-radius: 14px;
-    background: var(--bg-main);
-    color: var(--primary);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: 1.5px solid var(--border-color);
+    background: var(--card-accent, var(--primary));
+    opacity: 0.85;
     transition: all 0.25s ease;
 }
 
-.hover-hub-card:hover .card-icon-box {
-    background: var(--primary);
-    color: #FFFFFF;
-    border-color: var(--primary);
-    transform: scale(1.06);
-    box-shadow: 0 6px 16px rgba(184, 101, 43, 0.25);
+.hover-hub-card:hover, .hover-hub-card:focus-visible {
+    transform: translateY(-6px) scale(1.012);
+    border-color: var(--card-accent, var(--primary));
+    box-shadow: 0 20px 36px -10px var(--card-glow, rgba(184, 101, 43, 0.18)), 0 6px 16px rgba(28, 25, 23, 0.05);
 }
 
-.card-kpi-pill {
-    padding: 4px 10px;
-    border-radius: 12px;
+.hover-hub-card:hover::before, .hover-hub-card:focus-visible::before {
+    height: 6px;
+    opacity: 1;
+}
+
+/* Card Header */
+.card-header-flex {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+}
+
+.card-icon-box {
+    width: 52px;
+    height: 52px;
+    border-radius: 15px;
+    background: var(--card-icon-bg, #FAF6F2);
+    color: var(--card-accent, var(--primary));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1.5px solid var(--card-icon-border, var(--border-color));
+    transition: all 0.28s ease;
+}
+
+.hover-hub-card:hover .card-icon-box {
+    transform: scale(1.08) rotate(-3deg);
+    background: var(--card-accent, var(--primary));
+    color: #FFFFFF;
+    border-color: var(--card-accent, var(--primary));
+    box-shadow: 0 8px 18px var(--card-glow, rgba(184, 101, 43, 0.28));
+}
+
+.card-category-tag {
     font-size: 11px;
     font-weight: 700;
-    background: #FAF8F5;
-    border: 1px solid var(--border-color);
-    color: var(--text-secondary);
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    background: var(--card-icon-bg, #FAF6F2);
+    color: var(--card-accent, var(--primary));
+    border: 1px solid var(--card-icon-border, var(--border-color));
+    letter-spacing: -0.2px;
 }
 
-.card-content-area {
+/* Card Body */
+.card-body-content {
     flex: 1;
     display: flex;
     flex-direction: column;
 }
 
 .card-title {
-    font-size: 17px;
+    font-size: 18px;
     font-weight: 800;
     color: var(--text-primary);
-    margin-bottom: 6px;
+    margin-bottom: 8px;
+    letter-spacing: -0.3px;
     transition: color 0.2s ease;
 }
 
 .hover-hub-card:hover .card-title {
-    color: var(--primary);
+    color: var(--card-accent, var(--primary));
 }
 
-.card-description {
-    font-size: 12.5px;
+.card-desc {
+    font-size: 13px;
     color: var(--text-secondary);
-    line-height: 1.5;
-    margin-bottom: 16px;
+    line-height: 1.6;
+    margin-bottom: 18px;
+    font-weight: 500;
 }
 
-.card-footer-row {
+/* Card Footer */
+.card-footer-action {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    padding-top: 12px;
+    justify-content: space-between;
+    padding-top: 14px;
     border-top: 1px dashed var(--border-color);
     margin-top: auto;
 }
 
-.card-action-text {
-    font-size: 13px;
+.card-kpi-pill {
+    padding: 5px 12px;
+    border-radius: 12px;
+    font-size: 11.5px;
     font-weight: 700;
-    color: var(--primary);
-    display: flex;
+    background: #FAF8F5;
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    display: inline-flex;
     align-items: center;
-    gap: 6px;
-    transition: transform 0.2s ease;
+    gap: 5px;
 }
 
-.hover-hub-card:hover .card-action-text {
+.card-arrow-link {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--card-accent, var(--primary));
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    transition: transform 0.22s ease;
+}
+
+.hover-hub-card:hover .card-arrow-link {
     transform: translateX(-4px);
+}
+
+/* Category Specific Themes */
+/* 1. POS Theme (Terracotta/Amber) */
+.theme-pos {
+    --card-accent: #B8652B;
+    --card-glow: rgba(184, 101, 43, 0.22);
+    --card-icon-bg: #FDF6F1;
+    --card-icon-border: #F3DEC9;
+}
+
+/* 2. Session Theme (Emerald) */
+.theme-session {
+    --card-accent: #059669;
+    --card-glow: rgba(5, 150, 105, 0.20);
+    --card-icon-bg: #ECFDF5;
+    --card-icon-border: #A7F3D0;
+}
+
+/* 3. Expenses Theme (Rose) */
+.theme-expenses {
+    --card-accent: #E11D48;
+    --card-glow: rgba(225, 29, 72, 0.20);
+    --card-icon-bg: #FFF1F2;
+    --card-icon-border: #FECDD3;
+}
+
+/* 4. Inventory Theme (Indigo) */
+.theme-inventory {
+    --card-accent: #4F46E5;
+    --card-glow: rgba(79, 70, 229, 0.20);
+    --card-icon-bg: #EEF2FF;
+    --card-icon-border: #C7D2FE;
+}
+
+/* 5. Stock Audit Theme (Violet) */
+.theme-audit {
+    --card-accent: #7C3AED;
+    --card-glow: rgba(124, 58, 237, 0.20);
+    --card-icon-bg: #F5F3FF;
+    --card-icon-border: #DDD6FE;
+}
+
+/* 6. Purchases & Suppliers Theme (Sky Blue) */
+.theme-purchases {
+    --card-accent: #0284C7;
+    --card-glow: rgba(2, 132, 199, 0.20);
+    --card-icon-bg: #F0F9FF;
+    --card-icon-border: #BAE6FD;
+}
+
+/* 7. Central Treasury Safe Theme (Gold / Forest Emerald) */
+.theme-treasury {
+    --card-accent: #0D9488;
+    --card-glow: rgba(13, 148, 136, 0.22);
+    --card-icon-bg: #F0FDFA;
+    --card-icon-border: #99F6E4;
+}
+
+/* 8. Salaries Theme (Amber/Gold) */
+.theme-salaries {
+    --card-accent: #D97706;
+    --card-glow: rgba(217, 119, 6, 0.20);
+    --card-icon-bg: #FFFBEB;
+    --card-icon-border: #FDE68A;
+}
+
+/* 9. Staff Directory Theme (Blue) */
+.theme-staff {
+    --card-accent: #2563EB;
+    --card-glow: rgba(37, 99, 235, 0.20);
+    --card-icon-bg: #EFF6FF;
+    --card-icon-border: #BFDBFE;
+}
+
+/* 10. Reports Theme (Fuchsia) */
+.theme-reports {
+    --card-accent: #9333EA;
+    --card-glow: rgba(147, 51, 234, 0.20);
+    --card-icon-bg: #FAF5FF;
+    --card-icon-border: #E9D5FF;
 }
 
 /* Filter bar */

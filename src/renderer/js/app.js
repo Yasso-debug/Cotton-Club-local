@@ -268,6 +268,13 @@ function bindNavigation() {
             switchView(view);
         });
     });
+
+    // Wire all back-to-hub buttons across views
+    document.querySelectorAll('.btn-back-hub').forEach(btn => {
+        btn.addEventListener('click', () => {
+            switchView('hub');
+        });
+    });
 }
 
 async function renderRoleHub() {
@@ -292,12 +299,13 @@ async function renderRoleHub() {
         }
 
         const sessionStatePill = state.activeSession 
-            ? '<span class="card-kpi-pill" style="color: var(--accent-emerald); background: var(--accent-emerald-bg);">الوردية مفتوحة</span>'
-            : '<span class="card-kpi-pill" style="color: var(--accent-rose); background: var(--accent-rose-bg);">الوردية مغلقة</span>';
+            ? '<span class="card-kpi-pill" style="color: #059669; background: #ECFDF5; border-color: #A7F3D0;">الوردية مفتوحة</span>'
+            : '<span class="card-kpi-pill" style="color: #E11D48; background: #FFF1F2; border-color: #FECDD3;">الوردية مغلقة</span>';
 
         const cashierCards = [
             {
                 view: 'pos',
+                theme: 'theme-pos',
                 icon: 'shopping-cart',
                 tag: 'نقطة البيع (F1)',
                 title: 'شاشة البيع المباشر (POS)',
@@ -306,6 +314,7 @@ async function renderRoleHub() {
             },
             {
                 view: 'session',
+                theme: 'theme-session',
                 icon: 'calendar-check',
                 tag: 'حسابات الوردية',
                 title: 'الوردية اليومية (Daily Session)',
@@ -314,6 +323,7 @@ async function renderRoleHub() {
             },
             {
                 view: 'expenses',
+                theme: 'theme-expenses',
                 icon: 'receipt',
                 tag: 'المصروفات النثرية',
                 title: 'المصروفات النثرية من الدرج',
@@ -324,15 +334,21 @@ async function renderRoleHub() {
 
         cashierCards.forEach(card => {
             const el = document.createElement('div');
-            el.className = 'hover-hub-card';
+            el.className = `hover-hub-card ${card.theme}`;
             el.dataset.view = card.view;
+            el.setAttribute('tabindex', '0');
+            el.setAttribute('role', 'button');
             el.innerHTML = `
-                <div class="card-icon-box">
-                    <i data-lucide="${card.icon}"></i>
+                <div class="card-header-flex">
+                    <div class="card-icon-box">
+                        <i data-lucide="${card.icon}"></i>
+                    </div>
+                    <span class="card-category-tag">${card.tag}</span>
                 </div>
-                <div class="card-tag">${card.tag}</div>
-                <div class="card-title">${card.title}</div>
-                <div class="card-desc">${card.desc}</div>
+                <div class="card-body-content">
+                    <div class="card-title">${card.title}</div>
+                    <div class="card-desc">${card.desc}</div>
+                </div>
                 <div class="card-footer-action">
                     ${card.kpi}
                     <span class="card-arrow-link">
@@ -341,7 +357,14 @@ async function renderRoleHub() {
                     </span>
                 </div>
             `;
-            el.addEventListener('click', () => switchView(card.view));
+            const activate = () => switchView(card.view);
+            el.addEventListener('click', activate);
+            el.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    activate();
+                }
+            });
             grid.appendChild(el);
         });
     } else {
@@ -374,6 +397,7 @@ async function renderRoleHub() {
         const adminCards = [
             {
                 view: 'session',
+                theme: 'theme-session',
                 icon: 'calendar-days',
                 tag: 'ورديات وتدقيق',
                 title: 'اليومية بفلتر فترات',
@@ -382,14 +406,16 @@ async function renderRoleHub() {
             },
             {
                 view: 'inventory',
+                theme: 'theme-inventory',
                 icon: 'package',
                 tag: 'المخزون والمنتجات',
                 title: 'المجموعات والأصناف',
                 desc: 'إدارة كتالوج الملابس، الأقسام، أسعار البيع والتكلفة، حساب هوامش الأرباح، وحدود طلب النواقص.',
-                kpi: `<span class="card-kpi-pill" style="color: var(--primary); font-weight: bold;">${prodCount} صنف مسجل</span>`
+                kpi: `<span class="card-kpi-pill" style="color: #4F46E5; font-weight: bold;">${prodCount} صنف مسجل</span>`
             },
             {
                 view: 'stock-audit',
+                theme: 'theme-audit',
                 icon: 'clipboard-check',
                 tag: 'رقابة المستودع',
                 title: 'جرد المخزون بسند تسوية',
@@ -398,6 +424,7 @@ async function renderRoleHub() {
             },
             {
                 view: 'purchases',
+                theme: 'theme-purchases',
                 subTab: 'suppliers',
                 icon: 'users',
                 tag: 'المديونيات والشركاء',
@@ -407,6 +434,7 @@ async function renderRoleHub() {
             },
             {
                 view: 'purchases',
+                theme: 'theme-purchases',
                 subTab: 'invoices',
                 icon: 'truck',
                 tag: 'وارد المستودع',
@@ -416,14 +444,16 @@ async function renderRoleHub() {
             },
             {
                 view: 'treasury',
+                theme: 'theme-treasury',
                 icon: 'landmark',
                 tag: 'الخزينة المستقلة',
                 title: 'خزنة مركزية (Safe)',
                 desc: 'حساب الخزنة الرئيسي المنفصل تماماً عن درج بيع الكاشير، لإيداعات رأس المال والمسحوبات وتوريدات الورديات.',
-                kpi: `<span class="card-kpi-pill" style="color: var(--accent-emerald); font-weight: 800;">${treasuryBal} ج.م</span>`
+                kpi: `<span class="card-kpi-pill" style="color: #0D9488; font-weight: 800;">${treasuryBal} ج.م</span>`
             },
             {
                 view: 'staff',
+                theme: 'theme-salaries',
                 subTab: 'salaries',
                 icon: 'banknote',
                 tag: 'الأجور والرواتب',
@@ -433,6 +463,7 @@ async function renderRoleHub() {
             },
             {
                 view: 'staff',
+                theme: 'theme-staff',
                 subTab: 'employees',
                 icon: 'contact',
                 tag: 'شؤون العاملين',
@@ -442,6 +473,7 @@ async function renderRoleHub() {
             },
             {
                 view: 'reports',
+                theme: 'theme-reports',
                 icon: 'bar-chart-3',
                 tag: 'مؤشرات الأداء',
                 title: 'تحليلات المبيعات',
@@ -452,15 +484,21 @@ async function renderRoleHub() {
 
         adminCards.forEach(card => {
             const el = document.createElement('div');
-            el.className = 'hover-hub-card';
+            el.className = `hover-hub-card ${card.theme}`;
             el.dataset.view = card.view;
+            el.setAttribute('tabindex', '0');
+            el.setAttribute('role', 'button');
             el.innerHTML = `
-                <div class="card-icon-box">
-                    <i data-lucide="${card.icon}"></i>
+                <div class="card-header-flex">
+                    <div class="card-icon-box">
+                        <i data-lucide="${card.icon}"></i>
+                    </div>
+                    <span class="card-category-tag">${card.tag}</span>
                 </div>
-                <div class="card-tag">${card.tag}</div>
-                <div class="card-title">${card.title}</div>
-                <div class="card-desc">${card.desc}</div>
+                <div class="card-body-content">
+                    <div class="card-title">${card.title}</div>
+                    <div class="card-desc">${card.desc}</div>
+                </div>
                 <div class="card-footer-action">
                     ${card.kpi}
                     <span class="card-arrow-link">
@@ -469,10 +507,17 @@ async function renderRoleHub() {
                     </span>
                 </div>
             `;
-            el.addEventListener('click', () => {
+            const activate = () => {
                 switchView(card.view);
                 if (card.subTab && card.view === 'staff') {
                     switchStaffTab(card.subTab);
+                }
+            };
+            el.addEventListener('click', activate);
+            el.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    activate();
                 }
             });
             grid.appendChild(el);
@@ -542,13 +587,29 @@ function switchView(viewName) {
     if (activePanel) refreshIcons(activePanel);
 }
 
+// Expose switchView globally for inline event handlers and external hooks
+window.switchView = switchView;
+
 function bindKeyboardShortcuts() {
     window.addEventListener('keydown', (e) => {
         // Modal active - allow ESC to close
         const activeModal = document.querySelector('.modal-overlay.active:not(#modalLogin)');
-        if (e.key === 'Escape' && activeModal) {
-            activeModal.classList.remove('active');
-            return;
+        if (e.key === 'Escape') {
+            if (activeModal) {
+                activeModal.classList.remove('active');
+                return;
+            }
+            // If logged in and on any view other than hub, return to Hub
+            const loginScreen = document.getElementById('loginScreen');
+            const isLoginVisible = loginScreen && loginScreen.style.display !== 'none';
+            if (state.currentUser && !isLoginVisible) {
+                const activeView = document.querySelector('.view-panel.active');
+                if (activeView && activeView.id !== 'view-hub') {
+                    e.preventDefault();
+                    switchView('hub');
+                    return;
+                }
+            }
         }
 
         // F1: Focus Barcode Search

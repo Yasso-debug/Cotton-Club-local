@@ -105,6 +105,11 @@
         </div>
 
         <div class="header-status">
+            <div class="header-shortcuts-badge" title="اختصارات لوحة المفاتيح المباشرة">
+                <i data-lucide="keyboard" class="icon-xs"></i>
+                <span>F1: بيع | F4: خصم | F10: إنهاء | Esc: رئيسية</span>
+            </div>
+
             <div id="sessionIndicator" class="session-indicator closed">
                 <div class="indicator-pulse"></div>
                 <span id="sessionStatusText">الوردية مغلقة</span>
@@ -120,87 +125,16 @@
                 <i data-lucide="clock" class="icon-xs" style="color: var(--text-muted);"></i>
                 <span id="clockTime">00:00:00</span>
             </div>
+
+            <button id="btnLogout" class="btn-header-logout" title="تسجيل الخروج من النظام">
+                <i data-lucide="log-out" class="icon-sm"></i>
+                <span>خروج</span>
+            </button>
         </div>
     </header>
 
-    <!-- App Container -->
+    <!-- App Container (Full-Width Workspace) -->
     <div class="app-container">
-        <!-- Sidebar Navigation -->
-        <aside class="app-sidebar">
-            <div class="nav-menu">
-                <!-- 0. Hub (Landing) -->
-                <div class="nav-item active" data-view="hub">
-                    <span class="nav-item-icon"><i data-lucide="layout-grid"></i></span>
-                    <span>الرئيسية (لوحة التحكم)</span>
-                </div>
-
-                <!-- 1. POS (Cashier & Admin) -->
-                <div class="nav-item" data-view="pos">
-                    <span class="nav-item-icon"><i data-lucide="shopping-cart"></i></span>
-                    <span>نقطة البيع (F1)</span>
-                </div>
-
-                <!-- 2. Daily Session (Cashier & Admin) -->
-                <div class="nav-item" data-view="session">
-                    <span class="nav-item-icon"><i data-lucide="calendar-check"></i></span>
-                    <span>الوردية اليومية</span>
-                </div>
-
-                <!-- 3. Expenses (Cashier & Admin) -->
-                <div class="nav-item" data-view="expenses">
-                    <span class="nav-item-icon"><i data-lucide="receipt"></i></span>
-                    <span>المصروفات النثرية</span>
-                </div>
-
-                <!-- Admin-Only Modules -->
-                <div class="nav-item admin-only" data-view="inventory">
-                    <span class="nav-item-icon"><i data-lucide="package"></i></span>
-                    <span>المخزون والمنتجات</span>
-                </div>
-
-                <div class="nav-item admin-only" data-view="stock-audit">
-                    <span class="nav-item-icon"><i data-lucide="clipboard-check"></i></span>
-                    <span>جرد المخزون والتسوية</span>
-                </div>
-
-                <div class="nav-item admin-only" data-view="purchases">
-                    <span class="nav-item-icon"><i data-lucide="truck"></i></span>
-                    <span>المشتريات والموردين</span>
-                </div>
-
-                <div class="nav-item admin-only" data-view="treasury">
-                    <span class="nav-item-icon"><i data-lucide="landmark"></i></span>
-                    <span>الخزنة المركزية</span>
-                </div>
-
-                <div class="nav-item admin-only" data-view="staff">
-                    <span class="nav-item-icon"><i data-lucide="users"></i></span>
-                    <span>الموظفين والمرتبات</span>
-                </div>
-
-                <div class="nav-item admin-only" data-view="reports">
-                    <span class="nav-item-icon"><i data-lucide="bar-chart-3"></i></span>
-                    <span>التقارير والإحصائيات</span>
-                </div>
-
-                <div class="nav-item admin-only" data-view="settings">
-                    <span class="nav-item-icon"><i data-lucide="settings"></i></span>
-                    <span>الإعدادات</span>
-                </div>
-            </div>
-
-            <div class="sidebar-footer">
-                <div style="font-size: 11px; color: var(--text-muted); text-align: center; font-weight: bold; display: flex; align-items: center; justify-content: center; gap: 4px;">
-                    <i data-lucide="keyboard" class="icon-xs"></i>
-                    <span>F1: بحث | F4: خصم | F10: بيع</span>
-                </div>
-                <button id="btnLogout" class="btn-logout">
-                    <i data-lucide="log-out" class="icon-sm"></i>
-                    <span>تسجيل الخروج</span>
-                </button>
-            </div>
-        </aside>
-
         <!-- Main Workspace -->
         <main class="app-main">
             <!-- 0. Hub View (Role Landing with Interactive Hover Cards) -->
@@ -221,6 +155,24 @@
 
             <!-- 1. POS View -->
             <section id="view-pos" class="view-panel">
+                <div class="view-header" style="margin-bottom: 0; padding: 12px 24px;">
+                    <div style="display: flex; align-items: center; gap: 14px;">
+                        <button class="btn-back-hub" onclick="switchView('hub')" title="الرجوع إلى لوحة التحكم الرئيسية (Esc)">
+                            <i data-lucide="arrow-right" class="icon-sm"></i>
+                            <span>الرئيسية</span>
+                        </button>
+                        <div>
+                            <h2 style="font-size: 17px; margin: 0; font-weight: 800; display: flex; align-items: center; gap: 8px;">
+                                <i data-lucide="shopping-cart" class="icon-sm" style="color: var(--primary);"></i>
+                                <span>نقطة البيع المباشر (POS - F1)</span>
+                            </h2>
+                            <span style="font-size: 11px; color: var(--text-muted);">إصدار فواتير البيع الفورية وقراءة الباركود</span>
+                        </div>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span class="card-kpi-pill" style="font-size: 11px; padding: 5px 12px;">F1: باركود | F4: خصم | F10: بيع | F12: تفريغ</span>
+                    </div>
+                </div>
                 <div class="pos-container">
                     <!-- Left: Search & Products Table -->
                     <div class="pos-left">
@@ -314,7 +266,16 @@
             <!-- 2. Daily Session View -->
             <section id="view-session" class="view-panel">
                 <div class="view-header">
-                    <h2>إدارة الوردية اليومية (Daily Session)</h2>
+                    <div style="display: flex; align-items: center; gap: 14px;">
+                        <button class="btn-back-hub" onclick="switchView('hub')" title="الرجوع إلى لوحة التحكم الرئيسية (Esc)">
+                            <i data-lucide="arrow-right" class="icon-sm"></i>
+                            <span>الرئيسية</span>
+                        </button>
+                        <div>
+                            <h2 style="font-size: 18px; margin: 0; font-weight: 800;">إدارة الوردية اليومية (Daily Session)</h2>
+                            <span style="font-size: 11px; color: var(--text-muted);">متابعة نقدية الدرج، تقفيل الوردية، وتصفية السجلات</span>
+                        </div>
+                    </div>
                     <div style="display: flex; gap: 10px;">
                         <button id="btnOpenSessionPrompt" class="btn-primary" style="background: var(--accent-emerald); display: flex; align-items: center; gap: 6px;">
                             <i data-lucide="plus-circle" class="icon-sm"></i>
@@ -406,7 +367,16 @@
             <!-- 3. Inventory View -->
             <section id="view-inventory" class="view-panel">
                 <div class="view-header">
-                    <h2>إدارة المخزون والمنتجات</h2>
+                    <div style="display: flex; align-items: center; gap: 14px;">
+                        <button class="btn-back-hub" onclick="switchView('hub')" title="الرجوع إلى لوحة التحكم الرئيسية (Esc)">
+                            <i data-lucide="arrow-right" class="icon-sm"></i>
+                            <span>الرئيسية</span>
+                        </button>
+                        <div>
+                            <h2 style="font-size: 18px; margin: 0; font-weight: 800;">إدارة المخزون والمنتجات</h2>
+                            <span style="font-size: 11px; color: var(--text-muted);">كتالوج الملابس، الأسعار، وهوامش الربح</span>
+                        </div>
+                    </div>
                     <div style="display: flex; gap: 10px;">
                         <button id="btnOpenNewProductModal" class="btn-primary" style="display: flex; align-items: center; gap: 6px;">
                             <i data-lucide="plus" class="icon-sm"></i>
@@ -456,7 +426,16 @@
             <!-- 4. Purchases View -->
             <section id="view-purchases" class="view-panel">
                 <div class="view-header">
-                    <h2>المشتريات والموردين</h2>
+                    <div style="display: flex; align-items: center; gap: 14px;">
+                        <button class="btn-back-hub" onclick="switchView('hub')" title="الرجوع إلى لوحة التحكم الرئيسية (Esc)">
+                            <i data-lucide="arrow-right" class="icon-sm"></i>
+                            <span>الرئيسية</span>
+                        </button>
+                        <div>
+                            <h2 style="font-size: 18px; margin: 0; font-weight: 800;">المشتريات والموردين</h2>
+                            <span style="font-size: 11px; color: var(--text-muted);">حسابات الموردين وفواتير شراء البضاعة</span>
+                        </div>
+                    </div>
                 </div>
 
                 <div style="padding: 24px; display: grid; grid-template-columns: 1fr 2fr; gap: 20px; flex: 1; overflow: hidden;">
@@ -503,7 +482,16 @@
             <!-- 5. Expenses View -->
             <section id="view-expenses" class="view-panel">
                 <div class="view-header">
-                    <h2>سندات المصروفات النثرية (من الدرج)</h2>
+                    <div style="display: flex; align-items: center; gap: 14px;">
+                        <button class="btn-back-hub" onclick="switchView('hub')" title="الرجوع إلى لوحة التحكم الرئيسية (Esc)">
+                            <i data-lucide="arrow-right" class="icon-sm"></i>
+                            <span>الرئيسية</span>
+                        </button>
+                        <div>
+                            <h2 style="font-size: 18px; margin: 0; font-weight: 800;">سندات المصروفات النثرية (من الدرج)</h2>
+                            <span style="font-size: 11px; color: var(--text-muted);">صرف نثريات الصيانة والضيافة والنظافة</span>
+                        </div>
+                    </div>
                     <button id="btnOpenAddExpenseModal" class="btn-primary" style="display: flex; align-items: center; gap: 6px;">
                         <i data-lucide="receipt" class="icon-sm"></i>
                         <span>صرف مصروف نثري</span>
@@ -533,7 +521,16 @@
             <!-- 6. Reports View -->
             <section id="view-reports" class="view-panel">
                 <div class="view-header">
-                    <h2>التقارير المالية والتحليلية</h2>
+                    <div style="display: flex; align-items: center; gap: 14px;">
+                        <button class="btn-back-hub" onclick="switchView('hub')" title="الرجوع إلى لوحة التحكم الرئيسية (Esc)">
+                            <i data-lucide="arrow-right" class="icon-sm"></i>
+                            <span>الرئيسية</span>
+                        </button>
+                        <div>
+                            <h2 style="font-size: 18px; margin: 0; font-weight: 800;">التقارير المالية والتحليلية</h2>
+                            <span style="font-size: 11px; color: var(--text-muted);">تحليلات المبيعات وهوامش الأرباح والأصناف</span>
+                        </div>
+                    </div>
                     <div style="display: flex; gap: 10px; align-items: center;">
                         <input type="date" id="reportStartDate" class="form-control">
                         <span>إلى</span>
@@ -590,7 +587,16 @@
             <!-- 7. Settings View -->
             <section id="view-settings" class="view-panel">
                 <div class="view-header">
-                    <h2>إعدادات النظام والطباعة</h2>
+                    <div style="display: flex; align-items: center; gap: 14px;">
+                        <button class="btn-back-hub" onclick="switchView('hub')" title="الرجوع إلى لوحة التحكم الرئيسية (Esc)">
+                            <i data-lucide="arrow-right" class="icon-sm"></i>
+                            <span>الرئيسية</span>
+                        </button>
+                        <div>
+                            <h2 style="font-size: 18px; margin: 0; font-weight: 800;">إعدادات النظام والطباعة</h2>
+                            <span style="font-size: 11px; color: var(--text-muted);">بيانات المتجر وطابعات الفواتير</span>
+                        </div>
+                    </div>
                     <button id="btnSaveSettings" class="btn-primary" style="display: flex; align-items: center; gap: 6px;">
                         <i data-lucide="save" class="icon-sm"></i>
                         <span>حفظ الإعدادات</span>
@@ -635,9 +641,15 @@
             <!-- 8. Stock Audit View (جرد المخزون وسندات التسوية الفورية) -->
             <section id="view-stock-audit" class="view-panel">
                 <div class="view-header">
-                    <div>
-                        <h2>جرد المخزون وسندات التسوية الفورية</h2>
-                        <p style="font-size: 12px; color: var(--text-muted); margin: 0;">تسجيل الفروقات الفعلية وإصدار سند تسوية مخزنية معتمد فوراً</p>
+                    <div style="display: flex; align-items: center; gap: 14px;">
+                        <button class="btn-back-hub" onclick="switchView('hub')" title="الرجوع إلى لوحة التحكم الرئيسية (Esc)">
+                            <i data-lucide="arrow-right" class="icon-sm"></i>
+                            <span>الرئيسية</span>
+                        </button>
+                        <div>
+                            <h2 style="font-size: 18px; margin: 0; font-weight: 800;">جرد المخزون وسندات التسوية الفورية</h2>
+                            <p style="font-size: 11px; color: var(--text-muted); margin: 0;">تسجيل الفروقات الفعلية وإصدار سند تسوية مخزنية معتمد فوراً</p>
+                        </div>
                     </div>
                     <button id="btnOpenStockRecountModal" class="btn-primary" style="display: flex; align-items: center; gap: 6px;">
                         <i data-lucide="clipboard-check" class="icon-sm"></i>
@@ -675,9 +687,15 @@
             <!-- 9. Central Treasury View (الخزنة المركزية المستقلة) -->
             <section id="view-treasury" class="view-panel">
                 <div class="view-header">
-                    <div>
-                        <h2>الخزنة المركزية المستقلة (Safe Vault)</h2>
-                        <p style="font-size: 12px; color: var(--text-muted); margin: 0;">حساب الخزنة الرئيسي المستقل تماماً عن درج بيع الكاشير اليومي</p>
+                    <div style="display: flex; align-items: center; gap: 14px;">
+                        <button class="btn-back-hub" onclick="switchView('hub')" title="الرجوع إلى لوحة التحكم الرئيسية (Esc)">
+                            <i data-lucide="arrow-right" class="icon-sm"></i>
+                            <span>الرئيسية</span>
+                        </button>
+                        <div>
+                            <h2 style="font-size: 18px; margin: 0; font-weight: 800;">الخزنة المركزية المستقلة (Safe Vault)</h2>
+                            <p style="font-size: 11px; color: var(--text-muted); margin: 0;">حساب الخزنة الرئيسي المستقل تماماً عن درج بيع الكاشير اليومي</p>
+                        </div>
                     </div>
                     <div style="display: flex; gap: 10px;">
                         <button id="btnOpenTreasuryDepositModal" class="btn-primary" style="background: var(--accent-emerald); display: flex; align-items: center; gap: 6px;">
@@ -735,9 +753,15 @@
             <!-- 10. Staff & Payroll View (الموظفين وصرف المرتبات) -->
             <section id="view-staff" class="view-panel">
                 <div class="view-header">
-                    <div>
-                        <h2>شؤون الموظفين وصرف المرتبات</h2>
-                        <p style="font-size: 12px; color: var(--text-muted); margin: 0;">دليل العاملين، السلف، ومسيرات صرف الرواتب الشهرية</p>
+                    <div style="display: flex; align-items: center; gap: 14px;">
+                        <button class="btn-back-hub" onclick="switchView('hub')" title="الرجوع إلى لوحة التحكم الرئيسية (Esc)">
+                            <i data-lucide="arrow-right" class="icon-sm"></i>
+                            <span>الرئيسية</span>
+                        </button>
+                        <div>
+                            <h2 style="font-size: 18px; margin: 0; font-weight: 800;">شؤون الموظفين وصرف المرتبات</h2>
+                            <p style="font-size: 11px; color: var(--text-muted); margin: 0;">دليل العاملين، السلف، ومسيرات صرف الرواتب الشهرية</p>
+                        </div>
                     </div>
                     <div style="display: flex; gap: 10px;">
                         <button id="btnOpenNewEmployeeModal" class="btn-secondary" style="display: flex; align-items: center; gap: 6px;">
