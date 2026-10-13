@@ -229,7 +229,6 @@ async function handleLogin() {
         await loadPosProducts();
 
         // Switch to Hub landing page with role-tailored hover cards
-        await renderRoleHub();
         switchView('hub');
     } catch (err) {
         errorEl.innerText = err.message;
@@ -294,8 +293,11 @@ function bindNavigation() {
     });
 }
 
+let renderRoleHubSeq = 0;
+
 async function renderRoleHub() {
     if (!state.currentUser) return;
+    const currentSeq = ++renderRoleHubSeq;
     const isCashier = state.currentUser.role === 'cashier';
     const grid = document.getElementById('hubCardsGrid');
     if (!grid) return;
@@ -304,7 +306,7 @@ async function renderRoleHub() {
     const subtitleEl = document.getElementById('hubWelcomeSubtitle');
     const roleBadgeEl = document.getElementById('hubRoleBadge');
 
-    grid.innerHTML = '';
+    let cardsToRender = [];
 
     if (isCashier) {
         // Chair / Cashier: Exactly 3 Hover Cards
@@ -319,7 +321,7 @@ async function renderRoleHub() {
             ? '<span class="card-kpi-pill" style="color: #059669; background: #ECFDF5; border-color: #A7F3D0;">الوردية مفتوحة</span>'
             : '<span class="card-kpi-pill" style="color: #E11D48; background: #FFF1F2; border-color: #FECDD3;">الوردية مغلقة</span>';
 
-        const cashierCards = [
+        cardsToRender = [
             {
                 view: 'pos',
                 theme: 'theme-pos',
@@ -348,42 +350,6 @@ async function renderRoleHub() {
                 kpi: '<span class="card-kpi-pill">سندات الدرج</span>'
             }
         ];
-
-        cashierCards.forEach(card => {
-            const el = document.createElement('div');
-            el.className = `hover-hub-card ${card.theme}`;
-            el.dataset.view = card.view;
-            el.setAttribute('tabindex', '0');
-            el.setAttribute('role', 'button');
-            el.innerHTML = `
-                <div class="card-header-flex">
-                    <div class="card-icon-box">
-                        <i data-lucide="${card.icon}"></i>
-                    </div>
-                    <span class="card-category-tag">${card.tag}</span>
-                </div>
-                <div class="card-body-content">
-                    <div class="card-title">${card.title}</div>
-                    <div class="card-desc">${card.desc}</div>
-                </div>
-                <div class="card-footer-action">
-                    ${card.kpi}
-                    <span class="card-arrow-link">
-                        <span>دخول</span>
-                        <i data-lucide="arrow-left" class="icon-xs"></i>
-                    </span>
-                </div>
-            `;
-            const activate = () => switchView(card.view);
-            el.addEventListener('click', activate);
-            el.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    activate();
-                }
-            });
-            grid.appendChild(el);
-        });
     } else {
         // Admin: Exactly 9 Hover Cards
         if (titleEl) titleEl.innerText = `مرحباً بك، ${state.currentUser.displayName} — لوحة الإدارة العامة`;
@@ -411,11 +377,14 @@ async function renderRoleHub() {
             }
         }
 
+        // If another render superseded while awaiting, abort stale render
+        if (currentSeq !== renderRoleHubSeq) return;
+
         let treasuryBal = hubMetricsCache.treasuryBal;
         let prodCount = hubMetricsCache.prodCount;
         let empCount = hubMetricsCache.empCount;
 
-        const adminCards = [
+        cardsToRender = [
             {
                 view: 'session',
                 theme: 'theme-session',
@@ -502,49 +471,57 @@ async function renderRoleHub() {
                 kpi: '<span class="card-kpi-pill">مؤشرات الأرباح والنمو</span>'
             }
         ];
-
-        adminCards.forEach(card => {
-            const el = document.createElement('div');
-            el.className = `hover-hub-card ${card.theme}`;
-            el.dataset.view = card.view;
-            el.setAttribute('tabindex', '0');
-            el.setAttribute('role', 'button');
-            el.innerHTML = `
-                <div class="card-header-flex">
-                    <div class="card-icon-box">
-                        <i data-lucide="${card.icon}"></i>
-                    </div>
-                    <span class="card-category-tag">${card.tag}</span>
-                </div>
-                <div class="card-body-content">
-                    <div class="card-title">${card.title}</div>
-                    <div class="card-desc">${card.desc}</div>
-                </div>
-                <div class="card-footer-action">
-                    ${card.kpi}
-                    <span class="card-arrow-link">
-                        <span>دخول</span>
-                        <i data-lucide="arrow-left" class="icon-xs"></i>
-                    </span>
-                </div>
-            `;
-            const activate = () => {
-                switchView(card.view);
-                if (card.subTab && card.view === 'staff') {
-                    switchStaffTab(card.subTab);
-                }
-            };
-            el.addEventListener('click', activate);
-            el.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    activate();
-                }
-            });
-            grid.appendChild(el);
-        });
     }
 
+    // Final sequence check before DOM manipulation
+    if (currentSeq !== renderRoleHubSeq) return;
+
+    // Atomic wipe and populate via DocumentFragment
+    grid.innerHTML = '';
+    const fragment = document.createDocumentFragment();
+
+    cardsToRender.forEach(card => {
+        const el = document.createElement('div');
+        el.className = `hover-hub-card ${card.theme}`;
+        el.dataset.view = card.view;
+        el.setAttribute('tabindex', '0');
+        el.setAttribute('role', 'button');
+        el.innerHTML = `
+            <div class="card-header-flex">
+                <div class="card-icon-box">
+                    <i data-lucide="${card.icon}"></i>
+                </div>
+                <span class="card-category-tag">${card.tag}</span>
+            </div>
+            <div class="card-body-content">
+                <div class="card-title">${card.title}</div>
+                <div class="card-desc">${card.desc}</div>
+            </div>
+            <div class="card-footer-action">
+                ${card.kpi}
+                <span class="card-arrow-link">
+                    <span>دخول</span>
+                    <i data-lucide="arrow-left" class="icon-xs"></i>
+                </span>
+            </div>
+        `;
+        const activate = () => {
+            switchView(card.view);
+            if (card.subTab && card.view === 'staff') {
+                switchStaffTab(card.subTab);
+            }
+        };
+        el.addEventListener('click', activate);
+        el.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                activate();
+            }
+        });
+        fragment.appendChild(el);
+    });
+
+    grid.appendChild(fragment);
     refreshIcons(grid);
 }
 
