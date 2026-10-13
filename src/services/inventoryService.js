@@ -42,6 +42,15 @@ class InventoryService {
 
         sql += ' ORDER BY p.item_name ASC';
 
+        if (filters.limit) {
+            sql += ' LIMIT ?';
+            params.push(Number(filters.limit));
+            if (filters.offset) {
+                sql += ' OFFSET ?';
+                params.push(Number(filters.offset));
+            }
+        }
+
         return this.db.all(sql, params);
     }
 

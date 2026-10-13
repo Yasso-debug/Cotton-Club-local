@@ -82,6 +82,23 @@ const state = {
     settings: {}
 };
 
+// Performance Caches & Helpers
+const posProductsCache = new Map();
+const hubMetricsCache = {
+    timestamp: 0,
+    treasuryBal: '15,000.00',
+    prodCount: '0',
+    empCount: '2'
+};
+
+function debounce(fn, delay = 250) {
+    let timer = null;
+    return function(...args) {
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => fn.apply(this, args), delay);
+    };
+}
+
 // Global Lucide Icon Re-hydration Helper
 function refreshIcons(container = document) {
     if (window.lucide && typeof window.lucide.createIcons === 'function') {
@@ -376,23 +393,27 @@ async function renderRoleHub() {
             roleBadgeEl.className = 'user-role-tag';
         }
 
-        // Live KPI fetches
-        let treasuryBal = '15,000.00';
-        let prodCount = '0';
-        let empCount = '2';
-
-        try {
-            const [tRes, valRes, empRes] = await Promise.all([
-                window.api.getTreasuryBalance(),
-                window.api.getInventoryValuation(),
-                window.api.listEmployees()
-            ]);
-            if (tRes?.success) treasuryBal = Number(tRes.data.balance).toFixed(2);
-            if (valRes?.success) prodCount = String(valRes.data.totalItems);
-            if (empRes?.success) empCount = String(empRes.data.length);
-        } catch (e) {
-            console.warn('Hub metrics load error:', e);
+        // Live KPI fetches with 30-second TTL cache to eliminate delay on navigation
+        const now = Date.now();
+        if (now - hubMetricsCache.timestamp > 30000) {
+            try {
+                const [tRes, valRes, empRes] = await Promise.all([
+                    window.api.getTreasuryBalance(),
+                    window.api.getInventoryValuation(),
+                    window.api.listEmployees()
+                ]);
+                if (tRes?.success) hubMetricsCache.treasuryBal = Number(tRes.data.balance).toFixed(2);
+                if (valRes?.success) hubMetricsCache.prodCount = String(valRes.data.totalItems);
+                if (empRes?.success) hubMetricsCache.empCount = String(empRes.data.length);
+                hubMetricsCache.timestamp = now;
+            } catch (e) {
+                console.warn('Hub metrics load error:', e);
+            }
         }
+
+        let treasuryBal = hubMetricsCache.treasuryBal;
+        let prodCount = hubMetricsCache.prodCount;
+        let empCount = hubMetricsCache.empCount;
 
         const adminCards = [
             {
@@ -713,6 +734,7 @@ async function loadPosProducts(searchQuery = '') {
     }
 
     res.data.forEach(prod => {
+        posProductsCache.set(prod.id, prod);
         const tr = document.createElement('tr');
         tr.innerHTML = `
             <td style="font-family: monospace; font-weight: bold;">${prod.barcode}</td>
@@ -736,10 +758,13 @@ async function loadPosProducts(searchQuery = '') {
     refreshIcons(tbody);
 }
 
-// Window function for table add
+// Window function for instantaneous table add (0ms network delay)
 window.addProdById = async function(id) {
-    const res = await window.api.listProducts({});
-    const product = res.data?.find(p => p.id === id);
+    let product = posProductsCache.get(id);
+    if (!product) {
+        const res = await window.api.listProducts({ search: String(id), limit: 1 });
+        product = res.data?.find(p => p.id === id);
+    }
     if (product) addToCart(product);
 };
 
@@ -1085,7 +1110,7 @@ async function loadSessionDashboard(filters = null) {
  * 5. INVENTORY & STOCK
  * ------------------------------------------------------------- */
 function bindInventoryEvents() {
-    document.getElementById('inventorySearchInput').addEventListener('input', loadInventoryTable);
+    document.getElementById('inventorySearchInput').addEventListener('input', debounce(loadInventoryTable, 250));
     document.getElementById('inventoryCategoryFilter').addEventListener('change', loadInventoryTable);
     document.getElementById('chkLowStockOnly').addEventListener('change', loadInventoryTable);
 
@@ -1122,6 +1147,9 @@ function bindInventoryEvents() {
             alert(res.error);
             return;
         }
+
+        // Invalidate Hub cache so metrics update
+        hubMetricsCache.timestamp = 0;
 
         document.getElementById('modalNewProduct').classList.remove('active');
         await loadInventoryView();
@@ -1172,7 +1200,8 @@ async function loadInventoryTable() {
     const res = await window.api.listProducts({
         search,
         categoryId: categoryId ? Number(categoryId) : null,
-        lowStockOnly
+        lowStockOnly,
+        limit: 100
     });
 
     const tbody = document.getElementById('inventoryTableBody');

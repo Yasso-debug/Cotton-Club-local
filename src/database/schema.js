@@ -253,6 +253,10 @@ CREATE INDEX IF NOT EXISTS idx_employees_active ON employees(is_active);
 CREATE INDEX IF NOT EXISTS idx_salaries_employee ON salary_payments(employee_id);
 CREATE INDEX IF NOT EXISTS idx_adjustments_product ON stock_adjustments(product_id);
 CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at);
+CREATE INDEX IF NOT EXISTS idx_splits_invoice ON payment_splits(invoice_id);
+CREATE INDEX IF NOT EXISTS idx_purchase_lines_invoice ON purchase_line_items(purchase_invoice_id);
+CREATE INDEX IF NOT EXISTS idx_supplier_payments_session ON supplier_payments(session_id, payment_method);
+CREATE INDEX IF NOT EXISTS idx_sales_date_expr ON sales_invoices(date(created_at), status);
 `;
 
 module.exports = { SCHEMA_SQL };

@@ -133,6 +133,20 @@ const mimeTypes = {
     '.svg': 'image/svg+xml'
 };
 
+const staticCache = new Map();
+
+function getCachedFile(filePath) {
+    if (staticCache.has(filePath)) {
+        return staticCache.get(filePath);
+    }
+    if (!fs.existsSync(filePath)) {
+        return null;
+    }
+    const content = fs.readFileSync(filePath);
+    staticCache.set(filePath, content);
+    return content;
+}
+
 const server = http.createServer((req, res) => {
     // API Router
     if (req.url.startsWith('/api/') && req.method === 'POST') {
@@ -161,7 +175,7 @@ const server = http.createServer((req, res) => {
         return;
     }
 
-    // Static File Serving
+    // Static File Serving with in-memory caching
     let reqPath = req.url === '/' ? '/index.html' : req.url;
     // Strip query string
     reqPath = reqPath.split('?')[0];
@@ -170,16 +184,22 @@ const server = http.createServer((req, res) => {
     const ext = path.extname(filePath).toLowerCase();
     const contentType = mimeTypes[ext] || 'application/octet-stream';
 
-    fs.readFile(filePath, (err, content) => {
-        if (err) {
-            res.statusCode = 404;
-            res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-            return res.end('404 Not Found');
-        }
-        res.statusCode = 200;
-        res.setHeader('Content-Type', contentType);
-        res.end(content);
-    });
+    const content = getCachedFile(filePath);
+    if (!content) {
+        res.statusCode = 404;
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        return res.end('404 Not Found');
+    }
+
+    if (ext === '.html') {
+        res.setHeader('Cache-Control', 'no-cache');
+    } else {
+        res.setHeader('Cache-Control', 'public, max-age=3600');
+    }
+
+    res.statusCode = 200;
+    res.setHeader('Content-Type', contentType);
+    res.end(content);
 });
 
 server.listen(PORT, '127.0.0.1', () => {
