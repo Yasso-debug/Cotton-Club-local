@@ -265,6 +265,21 @@ class InventoryService {
         return { id: res.lastInsertRowid, name, description };
     }
 
+    /**
+     * List stock adjustment vouchers
+     */
+    listStockAdjustments(limit = 50) {
+        return this.db.all(
+            `SELECT a.*, p.barcode, p.item_name, u.display_name as user_name, s.session_code
+             FROM stock_adjustments a
+             JOIN products p ON a.product_id = p.id
+             LEFT JOIN users u ON a.user_id = u.id
+             LEFT JOIN daily_sessions s ON a.session_id = s.id
+             ORDER BY a.id DESC LIMIT ?`,
+            [limit]
+        );
+    }
+
     getProductById(id) {
         return this.db.get(
             `SELECT p.*, c.name as category_name

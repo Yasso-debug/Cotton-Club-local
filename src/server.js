@@ -18,10 +18,15 @@ const { ExpenseService } = require('./services/expenseService');
 const { ReportService } = require('./services/reportService');
 const { PrinterService } = require('./services/printerService');
 const { SettingsService } = require('./services/settingsService');
+const { TreasuryService } = require('./services/treasuryService');
+const { PayrollService } = require('./services/payrollService');
 
 const PORT = process.env.PORT || 3000;
 const db = getDatabase();
 seedDatabase(db);
+
+const treasuryService = new TreasuryService(db);
+const payrollService = new PayrollService(db, treasuryService);
 
 const services = {
     auth: new AuthService(db),
@@ -32,7 +37,9 @@ const services = {
     expenses: new ExpenseService(db),
     reports: new ReportService(db),
     printer: new PrinterService(db),
-    settings: new SettingsService(db)
+    settings: new SettingsService(db),
+    treasury: treasuryService,
+    payroll: payrollService
 };
 
 // RPC Map
@@ -44,7 +51,7 @@ const rpcHandlers = {
     'session/open': ({ userId, openingCash, notes }) => services.session.openSession(userId, openingCash, notes),
     'session/get-summary': ({ sessionId }) => services.session.getSessionSummary(sessionId),
     'session/close': ({ sessionId, userId, actualCash, notes }) => services.session.closeSession(sessionId, userId, actualCash, notes),
-    'session/list': ({ limit }) => services.session.listSessions(limit),
+    'session/list': (filters) => services.session.listSessions(filters),
     'pos/search-products': ({ query, limit }) => services.pos.searchProducts(query, limit),
     'pos/find-barcode': ({ barcode }) => services.pos.findProductByBarcode(barcode),
     'pos/checkout': (data) => services.pos.checkout(data),
@@ -55,6 +62,7 @@ const rpcHandlers = {
     'inventory/create-product': ({ data, userId }) => services.inventory.createProduct(data, userId),
     'inventory/update-product': ({ id, data, userId }) => services.inventory.updateProduct(id, data, userId),
     'inventory/adjust-stock': ({ data, userId, sessionId }) => services.inventory.adjustStock(data, userId, sessionId),
+    'inventory/list-adjustments': ({ limit }) => services.inventory.listStockAdjustments(limit),
     'inventory/valuation': () => services.inventory.getInventoryValuation(),
     'inventory/list-categories': () => services.inventory.listCategories(),
     'inventory/create-category': ({ name, desc }) => services.inventory.createCategory(name, desc),
@@ -70,6 +78,33 @@ const rpcHandlers = {
     'reports/top-selling': ({ limit, startDate, endDate }) => services.reports.getTopSellingProducts(limit, startDate, endDate),
     'reports/category-sales': ({ startDate, endDate }) => services.reports.getCategorySales(startDate, endDate),
     'reports/dashboard-overview': () => services.reports.getDashboardOverview(),
+    'treasury/balance': () => services.treasury.getBalance(),
+    'treasury/get-balance': () => services.treasury.getBalance(),
+    'treasury/deposit': (params) => {
+        const d = params.data || params;
+        return services.treasury.deposit(d.amount, d.paidBy || d.sourceDestination, d.notes, params.userId || d.userId);
+    },
+    'treasury/withdraw': (params) => {
+        const d = params.data || params;
+        return services.treasury.withdraw(d.amount, d.recipient || d.destination, d.notes, params.userId || d.userId);
+    },
+    'treasury/transfer-shift': (params) => {
+        const d = params.data || params;
+        return services.treasury.transferFromSession(d.sessionId, d.amount, d.notes, params.userId || d.userId);
+    },
+    'treasury/list-transactions': ({ limit }) => services.treasury.listTransactions(limit),
+    'payroll/list-employees': (params) => services.payroll.listEmployees(params?.onlyActive ?? params?.activeOnly),
+    'payroll/create-employee': (params) => {
+        const d = params.data || params;
+        return services.payroll.createEmployee(d, params.userId || d.userId);
+    },
+    'payroll/update-employee': ({ id, data, userId }) => services.payroll.updateEmployee(id, data, userId),
+    'payroll/disburse-salary': (params) => {
+        const d = params.data || params;
+        return services.payroll.disburseSalary(d, params.userId || d.userId);
+    },
+    'payroll/list-payments': ({ limit }) => services.payroll.listSalaryPayments(limit),
+    'payroll/list-salary-payments': ({ limit }) => services.payroll.listSalaryPayments(limit),
     'printer/preview-invoice': ({ invoiceId }) => {
         const inv = services.pos.getInvoiceById(invoiceId);
         if (!inv) throw new Error('الفاتورة غير موجودة');

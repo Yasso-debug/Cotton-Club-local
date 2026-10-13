@@ -176,7 +176,47 @@ CREATE TABLE IF NOT EXISTS app_settings (
     updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 
--- 15. Audit Log
+-- 15. Central Treasury (Main Safe Transactions)
+CREATE TABLE IF NOT EXISTS central_treasury_transactions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    transaction_type TEXT NOT NULL CHECK(transaction_type IN ('deposit', 'withdraw', 'shift_transfer', 'salary_payout')),
+    amount REAL NOT NULL CHECK(amount > 0),
+    source_destination TEXT NOT NULL,
+    session_id INTEGER REFERENCES daily_sessions(id),
+    reference_id TEXT,
+    notes TEXT,
+    performed_by INTEGER NOT NULL REFERENCES users(id),
+    created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+
+-- 16. Employees & Staff Directory
+CREATE TABLE IF NOT EXISTS employees (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    full_name TEXT NOT NULL,
+    job_title TEXT NOT NULL,
+    phone TEXT,
+    basic_salary REAL NOT NULL DEFAULT 0 CHECK(basic_salary >= 0),
+    is_active INTEGER NOT NULL DEFAULT 1 CHECK(is_active IN (0, 1)),
+    hire_date TEXT NOT NULL DEFAULT (date('now', 'localtime')),
+    created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+
+-- 17. Salary Payments & Advances
+CREATE TABLE IF NOT EXISTS salary_payments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    voucher_number TEXT NOT NULL UNIQUE,
+    employee_id INTEGER NOT NULL REFERENCES employees(id),
+    amount REAL NOT NULL CHECK(amount > 0),
+    payment_type TEXT NOT NULL CHECK(payment_type IN ('salary', 'advance', 'bonus', 'deduction')),
+    payment_source TEXT NOT NULL CHECK(payment_source IN ('treasury', 'drawer')),
+    session_id INTEGER REFERENCES daily_sessions(id),
+    notes TEXT,
+    paid_by INTEGER NOT NULL REFERENCES users(id),
+    paid_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+
+-- 18. Audit Log
 CREATE TABLE IF NOT EXISTS audit_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER REFERENCES users(id),
@@ -208,6 +248,10 @@ CREATE INDEX IF NOT EXISTS idx_sessions_status ON daily_sessions(status);
 CREATE INDEX IF NOT EXISTS idx_expenses_session ON petty_expenses(session_id);
 CREATE INDEX IF NOT EXISTS idx_purchases_supplier ON purchase_invoices(supplier_id);
 CREATE INDEX IF NOT EXISTS idx_purchases_session ON purchase_invoices(session_id);
+CREATE INDEX IF NOT EXISTS idx_treasury_created ON central_treasury_transactions(created_at);
+CREATE INDEX IF NOT EXISTS idx_employees_active ON employees(is_active);
+CREATE INDEX IF NOT EXISTS idx_salaries_employee ON salary_payments(employee_id);
+CREATE INDEX IF NOT EXISTS idx_adjustments_product ON stock_adjustments(product_id);
 CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at);
 `;
 

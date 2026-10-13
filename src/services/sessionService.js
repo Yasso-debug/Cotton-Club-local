@@ -214,17 +214,54 @@ class SessionService {
         );
     }
 
-    listSessions(limit = 30) {
-        return this.db.all(
-            `SELECT s.*, 
-                    u1.display_name as opened_by_name,
-                    u2.display_name as closed_by_name
-             FROM daily_sessions s
-             LEFT JOIN users u1 ON s.opened_by = u1.id
-             LEFT JOIN users u2 ON s.closed_by = u2.id
-             ORDER BY s.id DESC LIMIT ?`,
-            [limit]
-        );
+    /**
+     * List sessions with optional filters (startDate, endDate, status, limit)
+     */
+    listSessions(filters = 50) {
+        let limit = 50;
+        let startDate = null;
+        let endDate = null;
+        let status = null;
+
+        if (typeof filters === 'number') {
+            limit = filters;
+        } else if (typeof filters === 'object' && filters !== null) {
+            limit = filters.limit || 50;
+            startDate = filters.startDate || null;
+            endDate = filters.endDate || null;
+            status = filters.status || null;
+        }
+
+        let sql = `
+            SELECT s.*, 
+                   u1.display_name as opened_by_name,
+                   u2.display_name as closed_by_name
+            FROM daily_sessions s
+            LEFT JOIN users u1 ON s.opened_by = u1.id
+            LEFT JOIN users u2 ON s.closed_by = u2.id
+            WHERE 1=1
+        `;
+        const params = [];
+
+        if (startDate) {
+            sql += ' AND s.opened_at >= ?';
+            params.push(`${startDate} 00:00:00`);
+        }
+
+        if (endDate) {
+            sql += ' AND s.opened_at <= ?';
+            params.push(`${endDate} 23:59:59`);
+        }
+
+        if (status) {
+            sql += ' AND s.status = ?';
+            params.push(status);
+        }
+
+        sql += ' ORDER BY s.id DESC LIMIT ?';
+        params.push(limit);
+
+        return this.db.all(sql, params);
     }
 }
 

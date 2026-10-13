@@ -23,7 +23,7 @@ if (!window.api) {
         openSession: (userId, openingCash, notes) => rpc('session/open', { userId, openingCash, notes }),
         getSessionSummary: (sessionId) => rpc('session/get-summary', { sessionId }),
         closeSession: (sessionId, userId, actualCash, notes) => rpc('session/close', { sessionId, userId, actualCash, notes }),
-        listSessions: (limit) => rpc('session/list', { limit }),
+        listSessions: (filters) => rpc('session/list', typeof filters === 'number' ? { limit: filters } : (filters || {})),
         searchProducts: (query, limit) => rpc('pos/search-products', { query, limit }),
         findProductByBarcode: (barcode) => rpc('pos/find-barcode', { barcode }),
         checkout: (saleData) => rpc('pos/checkout', saleData),
@@ -34,6 +34,7 @@ if (!window.api) {
         createProduct: (data, userId) => rpc('inventory/create-product', { data, userId }),
         updateProduct: (id, data, userId) => rpc('inventory/update-product', { id, data, userId }),
         adjustStock: (data, userId, sessionId) => rpc('inventory/adjust-stock', { data, userId, sessionId }),
+        listStockAdjustments: (limit) => rpc('inventory/list-adjustments', { limit }),
         getInventoryValuation: () => rpc('inventory/valuation'),
         listCategories: () => rpc('inventory/list-categories'),
         createCategory: (name, desc) => rpc('inventory/create-category', { name, desc }),
@@ -53,7 +54,19 @@ if (!window.api) {
         printInvoiceReceipt: (invoiceId) => rpc('printer/print-invoice', { invoiceId }),
         printZReport: (sessionId) => rpc('printer/print-z-report', { sessionId }),
         getSettings: () => rpc('settings/get-all'),
-        updateSettings: (settingsMap, userId) => rpc('settings/update', { settingsMap, userId })
+        updateSettings: (settingsMap, userId) => rpc('settings/update', { settingsMap, userId }),
+        // Treasury (الخزنة المركزية)
+        getTreasuryBalance: () => rpc('treasury/balance'),
+        treasuryDeposit: (data, userId) => rpc('treasury/deposit', { data, userId }),
+        treasuryWithdraw: (data, userId) => rpc('treasury/withdraw', { data, userId }),
+        transferShiftToTreasury: (sessionId, amount, userId) => rpc('treasury/transfer-shift', { sessionId, amount, userId }),
+        listTreasuryTransactions: (limit) => rpc('treasury/list-transactions', { limit }),
+        // Payroll & Staff (الموظفين والمرتبات)
+        listEmployees: (activeOnly) => rpc('payroll/list-employees', { activeOnly }),
+        createEmployee: (data) => rpc('payroll/create-employee', data),
+        updateEmployee: (id, data) => rpc('payroll/update-employee', { id, data }),
+        disburseSalary: (data, userId) => rpc('payroll/disburse-salary', { data, userId }),
+        listSalaryPayments: (limit) => rpc('payroll/list-salary-payments', { limit })
     };
 }
 
@@ -101,6 +114,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     bindPosEvents();
     bindSessionEvents();
     bindInventoryEvents();
+    bindStockAuditEvents();
+    bindTreasuryEvents();
+    bindStaffEvents();
     bindExpenseEvents();
     bindSettingsEvents();
     bindReportEvents();
@@ -179,8 +195,14 @@ async function handleLogin() {
         }
 
         state.currentUser = res.data;
+        const isAdmin = state.currentUser.role === 'admin';
         document.getElementById('headerUserName').innerText = state.currentUser.displayName;
-        document.getElementById('headerUserRole').innerText = state.currentUser.role === 'admin' ? 'مدير عام' : 'كاشير';
+        document.getElementById('headerUserRole').innerText = isAdmin ? 'مدير عام' : 'كاشير (Chair)';
+
+        // Role-based sidebar menu isolation (Cashier sees only POS, Session, Expenses, and Hub)
+        document.querySelectorAll('.admin-only').forEach(el => {
+            el.style.display = isAdmin ? 'flex' : 'none';
+        });
 
         // Hide Dedicated Login Screen
         document.getElementById('loginScreen').style.display = 'none';
@@ -189,8 +211,9 @@ async function handleLogin() {
         await refreshSessionState();
         await loadPosProducts();
 
-        // Switch to POS
-        switchView('pos');
+        // Switch to Hub landing page with role-tailored hover cards
+        await renderRoleHub();
+        switchView('hub');
     } catch (err) {
         errorEl.innerText = err.message;
         errorEl.style.display = 'block';
@@ -235,7 +258,7 @@ async function refreshSessionState() {
 }
 
 /* -------------------------------------------------------------
- * 2. NAVIGATION & KEYBOARD SHORTCUTS
+ * 2. NAVIGATION & ROLE HOVER CARDS (HUB)
  * ------------------------------------------------------------- */
 function bindNavigation() {
     const navItems = document.querySelectorAll('.nav-item');
@@ -247,10 +270,238 @@ function bindNavigation() {
     });
 }
 
+async function renderRoleHub() {
+    if (!state.currentUser) return;
+    const isCashier = state.currentUser.role === 'cashier';
+    const grid = document.getElementById('hubCardsGrid');
+    if (!grid) return;
+
+    const titleEl = document.getElementById('hubWelcomeTitle');
+    const subtitleEl = document.getElementById('hubWelcomeSubtitle');
+    const roleBadgeEl = document.getElementById('hubRoleBadge');
+
+    grid.innerHTML = '';
+
+    if (isCashier) {
+        // Chair / Cashier: Exactly 3 Hover Cards
+        if (titleEl) titleEl.innerText = `مرحباً بك، ${state.currentUser.displayName} — وردية المبيعات`;
+        if (subtitleEl) subtitleEl.innerText = 'لوحة الوصول السريع المخصصة لإنجاز عمليات البيع والوردية اليومية';
+        if (roleBadgeEl) {
+            roleBadgeEl.innerText = 'كاشير مبيعات (Chair)';
+            roleBadgeEl.className = 'user-role-tag';
+        }
+
+        const sessionStatePill = state.activeSession 
+            ? '<span class="card-kpi-pill" style="color: var(--accent-emerald); background: var(--accent-emerald-bg);">الوردية مفتوحة</span>'
+            : '<span class="card-kpi-pill" style="color: var(--accent-rose); background: var(--accent-rose-bg);">الوردية مغلقة</span>';
+
+        const cashierCards = [
+            {
+                view: 'pos',
+                icon: 'shopping-cart',
+                tag: 'نقطة البيع (F1)',
+                title: 'شاشة البيع المباشر (POS)',
+                desc: 'مسح باركود الملابس، إصدار فواتير نقدية وشبكة، إدارة السلة، وتطبيق الخصومات وطباعة الإيصالات.',
+                kpi: '<span class="card-kpi-pill">F1 - بدء البيع</span>'
+            },
+            {
+                view: 'session',
+                icon: 'calendar-check',
+                tag: 'حسابات الوردية',
+                title: 'الوردية اليومية (Daily Session)',
+                desc: 'استلام عهدة بداية اليوم، متابعة النقدية بالدرج، إغلاق الوردية، وطباعة التقرير الختامي Z-Report.',
+                kpi: sessionStatePill
+            },
+            {
+                view: 'expenses',
+                icon: 'receipt',
+                tag: 'المصروفات النثرية',
+                title: 'المصروفات النثرية من الدرج',
+                desc: 'تسجيل سندات الصرف النثرية المستعجلة (ضيافة، نظافة، نثريات) المخصومة مباشرة من درج الكاشير.',
+                kpi: '<span class="card-kpi-pill">سندات الدرج</span>'
+            }
+        ];
+
+        cashierCards.forEach(card => {
+            const el = document.createElement('div');
+            el.className = 'hover-hub-card';
+            el.dataset.view = card.view;
+            el.innerHTML = `
+                <div class="card-icon-box">
+                    <i data-lucide="${card.icon}"></i>
+                </div>
+                <div class="card-tag">${card.tag}</div>
+                <div class="card-title">${card.title}</div>
+                <div class="card-desc">${card.desc}</div>
+                <div class="card-footer-action">
+                    ${card.kpi}
+                    <span class="card-arrow-link">
+                        <span>دخول</span>
+                        <i data-lucide="arrow-left" class="icon-xs"></i>
+                    </span>
+                </div>
+            `;
+            el.addEventListener('click', () => switchView(card.view));
+            grid.appendChild(el);
+        });
+    } else {
+        // Admin: Exactly 9 Hover Cards
+        if (titleEl) titleEl.innerText = `مرحباً بك، ${state.currentUser.displayName} — لوحة الإدارة العامة`;
+        if (subtitleEl) subtitleEl.innerText = 'المركز القيادي الشامل لمتجر Cotton Club Store (المخازن، الخزنة، والمبيعات)';
+        if (roleBadgeEl) {
+            roleBadgeEl.innerText = 'مدير عام (Admin)';
+            roleBadgeEl.className = 'user-role-tag';
+        }
+
+        // Live KPI fetches
+        let treasuryBal = '15,000.00';
+        let prodCount = '0';
+        let empCount = '2';
+
+        try {
+            const [tRes, valRes, empRes] = await Promise.all([
+                window.api.getTreasuryBalance(),
+                window.api.getInventoryValuation(),
+                window.api.listEmployees()
+            ]);
+            if (tRes?.success) treasuryBal = Number(tRes.data.balance).toFixed(2);
+            if (valRes?.success) prodCount = String(valRes.data.totalItems);
+            if (empRes?.success) empCount = String(empRes.data.length);
+        } catch (e) {
+            console.warn('Hub metrics load error:', e);
+        }
+
+        const adminCards = [
+            {
+                view: 'session',
+                icon: 'calendar-days',
+                tag: 'ورديات وتدقيق',
+                title: 'اليومية بفلتر فترات',
+                desc: 'مراجعة وتدقيق سجل الورديات اليومية السابقة والحالية، مع فلترة مخصصة بالتواريخ ومتابعة العجز والزيادة.',
+                kpi: '<span class="card-kpi-pill">فلتر فترات متقدم</span>'
+            },
+            {
+                view: 'inventory',
+                icon: 'package',
+                tag: 'المخزون والمنتجات',
+                title: 'المجموعات والأصناف',
+                desc: 'إدارة كتالوج الملابس، الأقسام، أسعار البيع والتكلفة، حساب هوامش الأرباح، وحدود طلب النواقص.',
+                kpi: `<span class="card-kpi-pill" style="color: var(--primary); font-weight: bold;">${prodCount} صنف مسجل</span>`
+            },
+            {
+                view: 'stock-audit',
+                icon: 'clipboard-check',
+                tag: 'رقابة المستودع',
+                title: 'جرد المخزون بسند تسوية',
+                desc: 'المطابقة الدفترية والفعلية لأرصدة الرفوف وإصدار سندات تسوية فورية معتمدة لعلاج أي عجز أو فائض.',
+                kpi: '<span class="card-kpi-pill">تسوية جرد فورية</span>'
+            },
+            {
+                view: 'purchases',
+                subTab: 'suppliers',
+                icon: 'users',
+                tag: 'المديونيات والشركاء',
+                title: 'حسابات موردين',
+                desc: 'كشوفات حسابات الموردين، متابعة الدفعات النقدية المسددة، وأرصدة المديونيات المستحقة للمحل.',
+                kpi: '<span class="card-kpi-pill">متابعة الذمم الدائنة</span>'
+            },
+            {
+                view: 'purchases',
+                subTab: 'invoices',
+                icon: 'truck',
+                tag: 'وارد المستودع',
+                title: 'فواتير شراء بضاعة',
+                desc: 'تسجيل شحنات وفواتير شراء البضاعة الجديدة مع تحديث تكلفة الأصناف وتغذية أرصدة المخازن آلياً.',
+                kpi: '<span class="card-kpi-pill">شراء وتغذية المخزن</span>'
+            },
+            {
+                view: 'treasury',
+                icon: 'landmark',
+                tag: 'الخزينة المستقلة',
+                title: 'خزنة مركزية (Safe)',
+                desc: 'حساب الخزنة الرئيسي المنفصل تماماً عن درج بيع الكاشير، لإيداعات رأس المال والمسحوبات وتوريدات الورديات.',
+                kpi: `<span class="card-kpi-pill" style="color: var(--accent-emerald); font-weight: 800;">${treasuryBal} ج.م</span>`
+            },
+            {
+                view: 'staff',
+                subTab: 'salaries',
+                icon: 'banknote',
+                tag: 'الأجور والرواتب',
+                title: 'صرف مرتبات وسلف',
+                desc: 'إصدار سندات صرف رواتب العاملين، السلف المؤقتة، والحوافز مع التخصيم من الخزنة المركزية أو الدرج.',
+                kpi: '<span class="card-kpi-pill">مسيرات وسلف دورية</span>'
+            },
+            {
+                view: 'staff',
+                subTab: 'employees',
+                icon: 'contact',
+                tag: 'شؤون العاملين',
+                title: 'دليل الموظفين',
+                desc: 'سجل شؤون العاملين، بيانات الاتصال، الوظائف والصلاحيات، والرواتب الأساسية المعتمدة.',
+                kpi: `<span class="card-kpi-pill">${empCount} موظف مسجل</span>`
+            },
+            {
+                view: 'reports',
+                icon: 'bar-chart-3',
+                tag: 'مؤشرات الأداء',
+                title: 'تحليلات المبيعات',
+                desc: 'تقارير ذكية عن الإيرادات، مجمل الأرباح، الأصناف الأعلى مبيعاً، ومبيعات الأقسام بالفترات.',
+                kpi: '<span class="card-kpi-pill">مؤشرات الأرباح والنمو</span>'
+            }
+        ];
+
+        adminCards.forEach(card => {
+            const el = document.createElement('div');
+            el.className = 'hover-hub-card';
+            el.dataset.view = card.view;
+            el.innerHTML = `
+                <div class="card-icon-box">
+                    <i data-lucide="${card.icon}"></i>
+                </div>
+                <div class="card-tag">${card.tag}</div>
+                <div class="card-title">${card.title}</div>
+                <div class="card-desc">${card.desc}</div>
+                <div class="card-footer-action">
+                    ${card.kpi}
+                    <span class="card-arrow-link">
+                        <span>دخول</span>
+                        <i data-lucide="arrow-left" class="icon-xs"></i>
+                    </span>
+                </div>
+            `;
+            el.addEventListener('click', () => {
+                switchView(card.view);
+                if (card.subTab && card.view === 'staff') {
+                    switchStaffTab(card.subTab);
+                }
+            });
+            grid.appendChild(el);
+        });
+    }
+
+    refreshIcons(grid);
+}
+
+function switchStaffTab(tabName) {
+    const isEmployees = tabName === 'employees';
+    const tabBtnEmp = document.getElementById('tabBtnEmployees');
+    const tabBtnSal = document.getElementById('tabBtnSalaries');
+    const panelEmp = document.getElementById('staffTabEmployees');
+    const panelSal = document.getElementById('staffTabSalaries');
+
+    if (tabBtnEmp && tabBtnSal && panelEmp && panelSal) {
+        tabBtnEmp.classList.toggle('active', isEmployees);
+        tabBtnSal.classList.toggle('active', !isEmployees);
+        panelEmp.style.display = isEmployees ? 'flex' : 'none';
+        panelSal.style.display = !isEmployees ? 'flex' : 'none';
+    }
+}
+
 function switchView(viewName) {
-    // Restrict settings to admin
-    if (viewName === 'settings' && state.currentUser?.role === 'cashier') {
-        alert('هذه الصفحة متاحة لمدير النظام فقط.');
+    // Restrict cashier to allowed views
+    const cashierAllowed = ['hub', 'pos', 'session', 'expenses'];
+    if (state.currentUser?.role === 'cashier' && !cashierAllowed.includes(viewName)) {
+        alert('عذراً، هذه الصفحة متاحة لإدارة النظام فقط.');
         return;
     }
 
@@ -262,15 +513,23 @@ function switchView(viewName) {
         el.classList.toggle('active', el.id === `view-${viewName}`);
     });
 
-    if (viewName === 'pos') {
+    if (viewName === 'hub') {
+        renderRoleHub();
+    } else if (viewName === 'pos') {
         document.getElementById('posBarcodeInput').focus();
         loadPosProducts();
     } else if (viewName === 'session') {
         loadSessionDashboard();
     } else if (viewName === 'inventory') {
         loadInventoryView();
+    } else if (viewName === 'stock-audit') {
+        loadStockAuditView();
     } else if (viewName === 'purchases') {
         loadPurchasesView();
+    } else if (viewName === 'treasury') {
+        loadTreasuryView();
+    } else if (viewName === 'staff') {
+        loadStaffView();
     } else if (viewName === 'expenses') {
         loadExpensesView();
     } else if (viewName === 'reports') {
@@ -278,6 +537,9 @@ function switchView(viewName) {
     } else if (viewName === 'settings') {
         populateSettingsForm();
     }
+
+    const activePanel = document.getElementById(`view-${viewName}`);
+    if (activePanel) refreshIcons(activePanel);
 }
 
 function bindKeyboardShortcuts() {
@@ -687,24 +949,57 @@ function bindSessionEvents() {
         await window.api.printZReport(state.activeSession.id);
         await refreshSessionState();
     });
-}
 
-async function loadSessionDashboard() {
-    if (!state.activeSession) return;
-    const summaryRes = await window.api.getSessionSummary(state.activeSession.id);
-    if (summaryRes.success) {
-        const s = summaryRes.data;
-        document.getElementById('sessionCardOpening').innerText = `${s.openingCash.toFixed(2)} ج.م`;
-        document.getElementById('sessionCardSales').innerText = `${s.totalSales.toFixed(2)} ج.م`;
-        document.getElementById('sessionCardExpenses').innerText = `${s.totalExpenses.toFixed(2)} ج.م`;
-        document.getElementById('sessionCardSuppliers').innerText = `${s.totalSupplierPayments.toFixed(2)} ج.م`;
-        document.getElementById('sessionCardExpected').innerText = `${s.expectedCash.toFixed(2)} ج.م`;
+    // Date range & status filters
+    const filterBtn = document.getElementById('btnFilterSessions');
+    if (filterBtn) {
+        filterBtn.addEventListener('click', () => {
+            const startDate = document.getElementById('sessionFilterStartDate')?.value || null;
+            const endDate = document.getElementById('sessionFilterEndDate')?.value || null;
+            const status = document.getElementById('sessionFilterStatus')?.value || null;
+            loadSessionDashboard({ startDate, endDate, status, limit: 50 });
+        });
     }
 
-    const histRes = await window.api.listSessions(15);
+    const resetBtn = document.getElementById('btnResetSessionFilters');
+    if (resetBtn) {
+        resetBtn.addEventListener('click', () => {
+            if (document.getElementById('sessionFilterStartDate')) document.getElementById('sessionFilterStartDate').value = '';
+            if (document.getElementById('sessionFilterEndDate')) document.getElementById('sessionFilterEndDate').value = '';
+            if (document.getElementById('sessionFilterStatus')) document.getElementById('sessionFilterStatus').value = '';
+            loadSessionDashboard();
+        });
+    }
+}
+
+async function loadSessionDashboard(filters = null) {
+    if (state.activeSession) {
+        const summaryRes = await window.api.getSessionSummary(state.activeSession.id);
+        if (summaryRes.success) {
+            const s = summaryRes.data;
+            document.getElementById('sessionCardOpening').innerText = `${s.openingCash.toFixed(2)} ج.م`;
+            document.getElementById('sessionCardSales').innerText = `${s.totalSales.toFixed(2)} ج.م`;
+            document.getElementById('sessionCardExpenses').innerText = `${s.totalExpenses.toFixed(2)} ج.م`;
+            document.getElementById('sessionCardSuppliers').innerText = `${s.totalSupplierPayments.toFixed(2)} ج.م`;
+            document.getElementById('sessionCardExpected').innerText = `${s.expectedCash.toFixed(2)} ج.م`;
+        }
+    } else {
+        document.getElementById('sessionCardOpening').innerText = `0.00 ج.م`;
+        document.getElementById('sessionCardSales').innerText = `0.00 ج.م`;
+        document.getElementById('sessionCardExpenses').innerText = `0.00 ج.م`;
+        document.getElementById('sessionCardSuppliers').innerText = `0.00 ج.م`;
+        document.getElementById('sessionCardExpected').innerText = `0.00 ج.م`;
+    }
+
+    const queryFilters = filters || { limit: 20 };
+    const histRes = await window.api.listSessions(queryFilters);
     if (histRes.success) {
         const tbody = document.getElementById('sessionHistoryTableBody');
         tbody.innerHTML = '';
+        if (!histRes.data || histRes.data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="9" style="text-align: center; color: var(--text-muted); padding: 18px;">لا توجد ورديات تطابق معايير البحث المحددة</td></tr>';
+            return;
+        }
         histRes.data.forEach(h => {
             const tr = document.createElement('tr');
             tr.innerHTML = `
@@ -1056,3 +1351,464 @@ function bindModals() {
         });
     });
 }
+
+/* -------------------------------------------------------------
+ * 10. STOCK AUDIT & PHYSICAL ADJUSTMENT VOUCHERS
+ * ------------------------------------------------------------- */
+function bindStockAuditEvents() {
+    const openRecountBtn = document.getElementById('btnOpenStockRecountModal');
+    if (openRecountBtn) {
+        openRecountBtn.addEventListener('click', async () => {
+            const pRes = await window.api.listProducts({});
+            const sel = document.getElementById('recountProductSelect');
+            sel.innerHTML = '<option value="">اختر الصنف المراد جرده وتسويته...</option>';
+            
+            pRes.data?.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p.id;
+                opt.dataset.stock = p.current_stock;
+                opt.dataset.barcode = p.barcode;
+                opt.dataset.name = p.item_name;
+                opt.innerText = `${p.barcode} - ${p.item_name} (الرصيد الدفتري: ${p.current_stock})`;
+                sel.appendChild(opt);
+            });
+
+            document.getElementById('recountCurrentStock').value = '';
+            document.getElementById('recountActualStock').value = '';
+            document.getElementById('recountNotes').value = '';
+            document.getElementById('recountDiffBanner').style.display = 'none';
+
+            document.getElementById('modalStockRecount').classList.add('active');
+        });
+    }
+
+    const recountSel = document.getElementById('recountProductSelect');
+    if (recountSel) {
+        recountSel.addEventListener('change', () => {
+            const opt = recountSel.options[recountSel.selectedIndex];
+            if (opt && opt.value) {
+                document.getElementById('recountCurrentStock').value = opt.dataset.stock || 0;
+            } else {
+                document.getElementById('recountCurrentStock').value = '';
+            }
+            updateStockRecountDiffBanner();
+        });
+    }
+
+    const actualInput = document.getElementById('recountActualStock');
+    if (actualInput) {
+        actualInput.addEventListener('input', updateStockRecountDiffBanner);
+    }
+
+    const submitRecountBtn = document.getElementById('btnSubmitStockRecount');
+    if (submitRecountBtn) {
+        submitRecountBtn.addEventListener('click', async () => {
+            const sel = document.getElementById('recountProductSelect');
+            const productId = sel.value;
+            if (!productId) {
+                alert('يرجى اختيار الصنف المراد جرده وتسويته أولاً');
+                return;
+            }
+
+            const bookStock = Number(document.getElementById('recountCurrentStock').value) || 0;
+            const actualVal = document.getElementById('recountActualStock').value.trim();
+            if (actualVal === '') {
+                alert('يرجى إدخال الكمية الفعلية المحصية بالرف');
+                return;
+            }
+
+            const actualStock = Number(actualVal);
+            const diff = actualStock - bookStock;
+            const reason = document.getElementById('recountReason').value;
+            const notes = document.getElementById('recountNotes').value.trim();
+
+            const res = await window.api.adjustStock({
+                productId: Number(productId),
+                quantityDiff: diff,
+                reason,
+                notes
+            }, state.currentUser.id, state.activeSession?.id);
+
+            if (!res.success) {
+                alert(`خطأ في تطبيق سند التسوية: ${res.error}`);
+                return;
+            }
+
+            alert(`تم تطبيق سند التسوية المخزنية بنجاح!\nالرصيد السابق: ${bookStock} | الرصيد الفعلي الجديد: ${actualStock} (${diff >= 0 ? '+' + diff : diff})`);
+            document.getElementById('modalStockRecount').classList.remove('active');
+            await loadStockAuditView();
+        });
+    }
+}
+
+function updateStockRecountDiffBanner() {
+    const bookVal = document.getElementById('recountCurrentStock').value;
+    const actualVal = document.getElementById('recountActualStock').value;
+    const banner = document.getElementById('recountDiffBanner');
+    if (!banner) return;
+
+    if (bookVal === '' || actualVal === '') {
+        banner.style.display = 'none';
+        return;
+    }
+
+    const book = Number(bookVal);
+    const actual = Number(actualVal);
+    const diff = actual - book;
+
+    banner.style.display = 'block';
+    if (diff === 0) {
+        banner.style.background = '#ECFDF5';
+        banner.style.color = '#065F46';
+        banner.style.border = '1px solid #A7F3D0';
+        banner.innerText = 'الكمية الفعلية المحصية مطابقة تماماً للرصيد الدفتري (فارق 0)';
+    } else if (diff < 0) {
+        banner.style.background = '#FEF2F2';
+        banner.style.color = '#991B1B';
+        banner.style.border = '1px solid #FECACA';
+        banner.innerText = `عجز مخزني قدره: ${diff} قطعة (سيتم تخفيض رصيد الصنف وتوثيق السند)`;
+    } else {
+        banner.style.background = '#EFF6FF';
+        banner.style.color = '#1E40AF';
+        banner.style.border = '1px solid #BFDBFE';
+        banner.innerText = `فائض مخزني قدره: +${diff} قطعة (سيتم زيادة رصيد الصنف وتوثيق السند)`;
+    }
+}
+
+async function loadStockAuditView() {
+    const res = await window.api.listStockAdjustments(50);
+    const tbody = document.getElementById('stockAdjustmentsTableBody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    if (!res.success || !res.data || res.data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="10" style="text-align: center; color: var(--text-muted); padding: 20px;">لا توجد سندات تسوية مخزنية مسجلة</td></tr>';
+        return;
+    }
+
+    res.data.forEach(a => {
+        const tr = document.createElement('tr');
+        const diffColor = a.quantity_diff < 0 ? 'var(--accent-rose)' : a.quantity_diff > 0 ? 'var(--accent-emerald)' : 'inherit';
+        const diffSign = a.quantity_diff > 0 ? '+' : '';
+        tr.innerHTML = `
+            <td style="font-weight: bold; font-family: monospace;">#ADJ-${a.id}</td>
+            <td style="font-family: monospace;">${a.barcode}</td>
+            <td style="font-weight: 600;">${a.item_name}</td>
+            <td>${a.current_stock_before}</td>
+            <td style="font-weight: bold;">${a.new_stock_after}</td>
+            <td style="color: ${diffColor}; font-weight: bold;">${diffSign}${a.quantity_diff}</td>
+            <td><span class="badge" style="background: var(--bg-card-hover);">${a.adjustment_type}</span></td>
+            <td>${a.reason || '-'}</td>
+            <td>${a.user_name || '-'}</td>
+            <td style="font-size: 12px; color: var(--text-muted);">${a.created_at}</td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+/* -------------------------------------------------------------
+ * 11. CENTRAL TREASURY (SAFE VAULT)
+ * ------------------------------------------------------------- */
+function bindTreasuryEvents() {
+    const openDepBtn = document.getElementById('btnOpenTreasuryDepositModal');
+    if (openDepBtn) {
+        openDepBtn.addEventListener('click', () => {
+            document.getElementById('treasuryDepositAmount').value = '';
+            document.getElementById('treasuryDepositPaidBy').value = '';
+            document.getElementById('treasuryDepositNotes').value = '';
+            document.getElementById('modalTreasuryDeposit').classList.add('active');
+        });
+    }
+
+    const submitDepBtn = document.getElementById('btnSubmitTreasuryDeposit');
+    if (submitDepBtn) {
+        submitDepBtn.addEventListener('click', async () => {
+            const amount = Number(document.getElementById('treasuryDepositAmount').value);
+            if (!amount || amount <= 0) {
+                alert('يرجى إدخال مبلغ إيداع صحيح');
+                return;
+            }
+
+            const category = document.getElementById('treasuryDepositCategory').value;
+            const paidBy = document.getElementById('treasuryDepositPaidBy').value.trim();
+            const notes = document.getElementById('treasuryDepositNotes').value.trim();
+
+            const res = await window.api.treasuryDeposit({
+                amount,
+                category,
+                paidBy,
+                notes
+            }, state.currentUser.id);
+
+            if (!res.success) {
+                alert(`خطأ في الإيداع: ${res.error}`);
+                return;
+            }
+
+            alert(`تم تسجيل حركة إيداع في الخزنة المركزية بنجاح بمبلغ ${amount.toFixed(2)} ج.م`);
+            document.getElementById('modalTreasuryDeposit').classList.remove('active');
+            await loadTreasuryView();
+        });
+    }
+
+    const openWithBtn = document.getElementById('btnOpenTreasuryWithdrawModal');
+    if (openWithBtn) {
+        openWithBtn.addEventListener('click', () => {
+            document.getElementById('treasuryWithdrawAmount').value = '';
+            document.getElementById('treasuryWithdrawRecipient').value = '';
+            document.getElementById('treasuryWithdrawNotes').value = '';
+            document.getElementById('modalTreasuryWithdraw').classList.add('active');
+        });
+    }
+
+    const submitWithBtn = document.getElementById('btnSubmitTreasuryWithdraw');
+    if (submitWithBtn) {
+        submitWithBtn.addEventListener('click', async () => {
+            const amount = Number(document.getElementById('treasuryWithdrawAmount').value);
+            if (!amount || amount <= 0) {
+                alert('يرجى إدخال مبلغ سحب صحيح');
+                return;
+            }
+
+            const category = document.getElementById('treasuryWithdrawCategory').value;
+            const recipient = document.getElementById('treasuryWithdrawRecipient').value.trim();
+            const notes = document.getElementById('treasuryWithdrawNotes').value.trim();
+
+            const res = await window.api.treasuryWithdraw({
+                amount,
+                category,
+                recipient,
+                notes
+            }, state.currentUser.id);
+
+            if (!res.success) {
+                alert(`خطأ في السحب: ${res.error}`);
+                return;
+            }
+
+            alert(`تم صرف وسحب مبلغ ${amount.toFixed(2)} ج.م من الخزنة المركزية`);
+            document.getElementById('modalTreasuryWithdraw').classList.remove('active');
+            await loadTreasuryView();
+        });
+    }
+}
+
+async function loadTreasuryView() {
+    const balRes = await window.api.getTreasuryBalance();
+    if (balRes.success) {
+        const d = balRes.data;
+        document.getElementById('treasuryBalanceVal').innerText = `${d.balance.toFixed(2)} ج.م`;
+        document.getElementById('treasuryTodayDepositsVal').innerText = `${d.todayDeposits.toFixed(2)} ج.م`;
+        document.getElementById('treasuryTodayWithdrawalsVal').innerText = `${d.todayWithdrawals.toFixed(2)} ج.م`;
+        document.getElementById('treasuryShiftsTransferVal').innerText = `${d.shiftTransfersTotal.toFixed(2)} ج.م`;
+    }
+
+    const txRes = await window.api.listTreasuryTransactions(50);
+    const tbody = document.getElementById('treasuryTransactionsTableBody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    if (!txRes.success || !txRes.data || txRes.data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 20px;">لا توجد حركات مسجلة بالخزنة</td></tr>';
+        return;
+    }
+
+    txRes.data.forEach(t => {
+        const tr = document.createElement('tr');
+        const isDep = t.transaction_type === 'deposit' || t.transaction_type === 'shift_transfer';
+        const color = isDep ? 'var(--accent-emerald)' : 'var(--accent-rose)';
+        const sign = isDep ? '+' : '-';
+        const typeBadge = isDep ? '<span class="badge badge-ok">إيداع وارد</span>' : '<span class="badge badge-low-stock">سحب منصرف</span>';
+
+        tr.innerHTML = `
+            <td style="font-weight: bold; font-family: monospace;">#TX-${t.id}</td>
+            <td>${typeBadge}</td>
+            <td style="color: ${color}; font-weight: bold;">${sign}${t.amount.toFixed(2)} ج.م</td>
+            <td style="font-weight: bold;">${t.running_balance.toFixed(2)} ج.م</td>
+            <td>${t.source_destination || '-'}</td>
+            <td>${t.description || '-'}</td>
+            <td>${t.created_by_name || '-'}</td>
+            <td style="font-size: 12px; color: var(--text-muted);">${t.created_at}</td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+/* -------------------------------------------------------------
+ * 12. STAFF & PAYROLL (الموظفين وصرف المرتبات)
+ * ------------------------------------------------------------- */
+function bindStaffEvents() {
+    // Segmented tab switching
+    const tabBtnEmp = document.getElementById('tabBtnEmployees');
+    const tabBtnSal = document.getElementById('tabBtnSalaries');
+    if (tabBtnEmp && tabBtnSal) {
+        tabBtnEmp.addEventListener('click', () => switchStaffTab('employees'));
+        tabBtnSal.addEventListener('click', () => switchStaffTab('salaries'));
+    }
+
+    // New employee modal
+    const openNewEmpBtn = document.getElementById('btnOpenNewEmployeeModal');
+    if (openNewEmpBtn) {
+        openNewEmpBtn.addEventListener('click', () => {
+            document.getElementById('empFullName').value = '';
+            document.getElementById('empPhone').value = '';
+            document.getElementById('empBaseSalary').value = '3000';
+            document.getElementById('empNotes').value = '';
+            document.getElementById('modalNewEmployee').classList.add('active');
+        });
+    }
+
+    const submitNewEmpBtn = document.getElementById('btnSubmitNewEmployee');
+    if (submitNewEmpBtn) {
+        submitNewEmpBtn.addEventListener('click', async () => {
+            const fullName = document.getElementById('empFullName').value.trim();
+            if (!fullName) {
+                alert('يرجى إدخال اسم الموظف');
+                return;
+            }
+
+            const roleTitle = document.getElementById('empRoleTitle').value;
+            const phone = document.getElementById('empPhone').value.trim();
+            const baseSalary = Number(document.getElementById('empBaseSalary').value) || 0;
+            const notes = document.getElementById('empNotes').value.trim();
+
+            const res = await window.api.createEmployee({
+                fullName,
+                roleTitle,
+                phone,
+                baseSalary,
+                notes
+            });
+
+            if (!res.success) {
+                alert(`خطأ في إضافة الموظف: ${res.error}`);
+                return;
+            }
+
+            alert(`تم تسجيل الموظف "${fullName}" بنجاح في سجل العاملين`);
+            document.getElementById('modalNewEmployee').classList.remove('active');
+            await loadStaffView();
+        });
+    }
+
+    // Disburse salary modal
+    const openDisburseBtn = document.getElementById('btnOpenDisburseSalaryModal');
+    if (openDisburseBtn) {
+        openDisburseBtn.addEventListener('click', async () => {
+            const empRes = await window.api.listEmployees(true);
+            const sel = document.getElementById('salaryEmployeeSelect');
+            sel.innerHTML = '<option value="">اختر الموظف المستحق...</option>';
+
+            empRes.data?.forEach(e => {
+                const opt = document.createElement('option');
+                opt.value = e.id;
+                opt.dataset.salary = e.base_salary;
+                opt.innerText = `${e.full_name} (${e.role_title} - راتب: ${e.base_salary} ج.م)`;
+                sel.appendChild(opt);
+            });
+
+            document.getElementById('salaryAmount').value = '';
+            const currentMonth = new Date().toLocaleDateString('ar-EG', { month: 'long', year: 'numeric' });
+            document.getElementById('salaryMonthPeriod').value = currentMonth;
+            document.getElementById('salaryNotes').value = '';
+
+            document.getElementById('modalDisburseSalary').classList.add('active');
+        });
+    }
+
+    const submitDisburseBtn = document.getElementById('btnSubmitSalaryDisbursement');
+    if (submitDisburseBtn) {
+        submitDisburseBtn.addEventListener('click', async () => {
+            const employeeId = document.getElementById('salaryEmployeeSelect').value;
+            if (!employeeId) {
+                alert('يرجى اختيار الموظف المستحق أولاً');
+                return;
+            }
+
+            const amount = Number(document.getElementById('salaryAmount').value);
+            if (!amount || amount <= 0) {
+                alert('يرجى إدخال مبلغ صحيح للصرف');
+                return;
+            }
+
+            const paymentType = document.getElementById('salaryPaymentType').value;
+            const paymentSource = document.getElementById('salarySource').value;
+            const monthPeriod = document.getElementById('salaryMonthPeriod').value.trim();
+            const notes = document.getElementById('salaryNotes').value.trim();
+
+            const res = await window.api.disburseSalary({
+                employeeId: Number(employeeId),
+                paymentType,
+                amount,
+                paymentSource,
+                monthPeriod,
+                notes,
+                sessionId: state.activeSession?.id
+            }, state.currentUser.id);
+
+            if (!res.success) {
+                alert(`خطأ في صرف السند: ${res.error}`);
+                return;
+            }
+
+            alert(`تم صرف المبلغ (${amount.toFixed(2)} ج.م) بنجاح وتوثيقه في كشف الرواتب`);
+            document.getElementById('modalDisburseSalary').classList.remove('active');
+            switchStaffTab('salaries');
+            await loadStaffView();
+        });
+    }
+}
+
+async function loadStaffView() {
+    // 1. Employees table
+    const empRes = await window.api.listEmployees();
+    const empTbody = document.getElementById('employeesTableBody');
+    if (empTbody) {
+        empTbody.innerHTML = '';
+        if (!empRes.success || !empRes.data || empRes.data.length === 0) {
+            empTbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 20px;">لا يوجد موظفين مسجلين</td></tr>';
+        } else {
+            empRes.data.forEach(e => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td style="font-weight: 700;">${e.full_name}</td>
+                    <td><span class="badge" style="background: var(--bg-card-hover);">${e.role_title}</span></td>
+                    <td style="font-family: monospace;">${e.phone || '-'}</td>
+                    <td style="color: var(--accent-emerald); font-weight: bold;">${e.base_salary.toFixed(2)} ج.م</td>
+                    <td style="font-size: 12px; color: var(--text-muted);">${e.hire_date || '-'}</td>
+                    <td><span class="badge ${e.is_active ? 'badge-ok' : 'badge-low-stock'}">${e.is_active ? 'نشط بالخدمة' : 'متوقف'}</span></td>
+                `;
+                empTbody.appendChild(tr);
+            });
+        }
+    }
+
+    // 2. Salaries table
+    const salRes = await window.api.listSalaryPayments(50);
+    const salTbody = document.getElementById('salariesTableBody');
+    if (salTbody) {
+        salTbody.innerHTML = '';
+        if (!salRes.success || !salRes.data || salRes.data.length === 0) {
+            salTbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 20px;">لا توجد سندات صرف رواتب أو سلف سابقة</td></tr>';
+        } else {
+            salRes.data.forEach(s => {
+                const tr = document.createElement('tr');
+                const typeLabel = s.payment_type === 'salary' ? 'راتب شهري' : s.payment_type === 'advance' ? 'سلفة مؤقتة' : 'مكافأة / حافز';
+                const sourceLabel = s.payment_source === 'treasury' ? 'الخزنة المركزية' : 'درج الكاشير';
+
+                tr.innerHTML = `
+                    <td style="font-weight: bold; font-family: monospace;">#SAL-${s.id}</td>
+                    <td style="font-weight: 600;">${s.employee_name}</td>
+                    <td><span class="badge" style="background: var(--bg-card-hover);">${typeLabel}</span></td>
+                    <td style="color: var(--accent-rose); font-weight: bold;">-${s.amount.toFixed(2)} ج.م</td>
+                    <td>${sourceLabel}</td>
+                    <td>${s.month_period || '-'}</td>
+                    <td>${s.created_by_name || '-'}</td>
+                    <td style="font-size: 12px; color: var(--text-muted);">${s.created_at}</td>
+                `;
+                salTbody.appendChild(tr);
+            });
+        }
+    }
+}
+

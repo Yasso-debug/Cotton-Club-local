@@ -128,31 +128,62 @@
         <!-- Sidebar Navigation -->
         <aside class="app-sidebar">
             <div class="nav-menu">
-                <div class="nav-item active" data-view="pos">
-                    <span class="nav-item-icon"><i data-lucide="shopping-cart"></i></span>
-                    <span>نقطة البيع</span>
+                <!-- 0. Hub (Landing) -->
+                <div class="nav-item active" data-view="hub">
+                    <span class="nav-item-icon"><i data-lucide="layout-grid"></i></span>
+                    <span>الرئيسية (لوحة التحكم)</span>
                 </div>
+
+                <!-- 1. POS (Cashier & Admin) -->
+                <div class="nav-item" data-view="pos">
+                    <span class="nav-item-icon"><i data-lucide="shopping-cart"></i></span>
+                    <span>نقطة البيع (F1)</span>
+                </div>
+
+                <!-- 2. Daily Session (Cashier & Admin) -->
                 <div class="nav-item" data-view="session">
                     <span class="nav-item-icon"><i data-lucide="calendar-check"></i></span>
                     <span>الوردية اليومية</span>
                 </div>
-                <div class="nav-item" data-view="inventory">
-                    <span class="nav-item-icon"><i data-lucide="package"></i></span>
-                    <span>المخزون والمنتجات</span>
-                </div>
-                <div class="nav-item" data-view="purchases">
-                    <span class="nav-item-icon"><i data-lucide="truck"></i></span>
-                    <span>المشتريات والموردين</span>
-                </div>
+
+                <!-- 3. Expenses (Cashier & Admin) -->
                 <div class="nav-item" data-view="expenses">
                     <span class="nav-item-icon"><i data-lucide="receipt"></i></span>
                     <span>المصروفات النثرية</span>
                 </div>
-                <div class="nav-item" data-view="reports">
+
+                <!-- Admin-Only Modules -->
+                <div class="nav-item admin-only" data-view="inventory">
+                    <span class="nav-item-icon"><i data-lucide="package"></i></span>
+                    <span>المخزون والمنتجات</span>
+                </div>
+
+                <div class="nav-item admin-only" data-view="stock-audit">
+                    <span class="nav-item-icon"><i data-lucide="clipboard-check"></i></span>
+                    <span>جرد المخزون والتسوية</span>
+                </div>
+
+                <div class="nav-item admin-only" data-view="purchases">
+                    <span class="nav-item-icon"><i data-lucide="truck"></i></span>
+                    <span>المشتريات والموردين</span>
+                </div>
+
+                <div class="nav-item admin-only" data-view="treasury">
+                    <span class="nav-item-icon"><i data-lucide="landmark"></i></span>
+                    <span>الخزنة المركزية</span>
+                </div>
+
+                <div class="nav-item admin-only" data-view="staff">
+                    <span class="nav-item-icon"><i data-lucide="users"></i></span>
+                    <span>الموظفين والمرتبات</span>
+                </div>
+
+                <div class="nav-item admin-only" data-view="reports">
                     <span class="nav-item-icon"><i data-lucide="bar-chart-3"></i></span>
                     <span>التقارير والإحصائيات</span>
                 </div>
-                <div class="nav-item" data-view="settings">
+
+                <div class="nav-item admin-only" data-view="settings">
                     <span class="nav-item-icon"><i data-lucide="settings"></i></span>
                     <span>الإعدادات</span>
                 </div>
@@ -172,8 +203,24 @@
 
         <!-- Main Workspace -->
         <main class="app-main">
+            <!-- 0. Hub View (Role Landing with Interactive Hover Cards) -->
+            <section id="view-hub" class="view-panel active">
+                <div class="view-header" style="border-bottom: none; padding-bottom: 0;">
+                    <div>
+                        <h2 id="hubWelcomeTitle" style="font-size: 22px; font-weight: 800; color: var(--text-primary); margin-bottom: 4px;">مرحباً بك في Cotton Club Store</h2>
+                        <p id="hubWelcomeSubtitle" style="font-size: 13px; color: var(--text-secondary); margin: 0;">لوحة الوصول السريع المخصصة لدورك الحالي</p>
+                    </div>
+                    <div id="hubRoleBadge" class="user-role-tag" style="font-size: 13px; padding: 6px 14px;">-</div>
+                </div>
+                <div style="padding: 24px; flex: 1; overflow-y: auto;">
+                    <div id="hubCardsGrid" class="hub-cards-grid">
+                        <!-- Populated dynamically via renderRoleHub() -->
+                    </div>
+                </div>
+            </section>
+
             <!-- 1. POS View -->
-            <section id="view-pos" class="view-panel active">
+            <section id="view-pos" class="view-panel">
                 <div class="pos-container">
                     <!-- Left: Search & Products Table -->
                     <div class="pos-left">
@@ -304,7 +351,35 @@
                 </div>
 
                 <div style="padding: 0 24px 24px 24px; flex: 1; display: flex; flex-direction: column;">
-                    <h3 style="font-size: 15px; margin-bottom: 12px; font-weight: 800;">سجل الورديات السابقة</h3>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
+                        <h3 style="font-size: 15px; margin: 0; font-weight: 800;">سجل الورديات السابقة بفلتر الفترات</h3>
+                        <div class="filter-bar-wrap">
+                            <div class="filter-item">
+                                <label class="filter-label">من:</label>
+                                <input type="date" id="sessionFilterStartDate" class="form-control" style="width: 140px; padding: 4px 8px; font-size: 12px;">
+                            </div>
+                            <div class="filter-item">
+                                <label class="filter-label">إلى:</label>
+                                <input type="date" id="sessionFilterEndDate" class="form-control" style="width: 140px; padding: 4px 8px; font-size: 12px;">
+                            </div>
+                            <div class="filter-item">
+                                <label class="filter-label">الحالة:</label>
+                                <select id="sessionFilterStatus" class="form-control" style="width: 120px; padding: 4px 8px; font-size: 12px;">
+                                    <option value="">الكل</option>
+                                    <option value="open">مفتوحة</option>
+                                    <option value="closed">مغلقة</option>
+                                </select>
+                            </div>
+                            <button id="btnFilterSessions" class="btn-primary" style="padding: 5px 12px; font-size: 12px; display: flex; align-items: center; gap: 4px;">
+                                <i data-lucide="filter" class="icon-xs"></i>
+                                <span>تصفية</span>
+                            </button>
+                            <button id="btnResetSessionFilters" class="btn-secondary" style="padding: 5px 10px; font-size: 12px; display: flex; align-items: center; gap: 4px;">
+                                <i data-lucide="rotate-ccw" class="icon-xs"></i>
+                                <span>إعادة تعيين</span>
+                            </button>
+                        </div>
+                    </div>
                     <div class="table-container">
                         <table class="data-table">
                             <thead>
@@ -556,6 +631,179 @@
                     </div>
                 </div>
             </section>
+
+            <!-- 8. Stock Audit View (جرد المخزون وسندات التسوية الفورية) -->
+            <section id="view-stock-audit" class="view-panel">
+                <div class="view-header">
+                    <div>
+                        <h2>جرد المخزون وسندات التسوية الفورية</h2>
+                        <p style="font-size: 12px; color: var(--text-muted); margin: 0;">تسجيل الفروقات الفعلية وإصدار سند تسوية مخزنية معتمد فوراً</p>
+                    </div>
+                    <button id="btnOpenStockRecountModal" class="btn-primary" style="display: flex; align-items: center; gap: 6px;">
+                        <i data-lucide="clipboard-check" class="icon-sm"></i>
+                        <span>سند تسوية جرد جديد</span>
+                    </button>
+                </div>
+
+                <div style="padding: 24px; flex: 1; display: flex; flex-direction: column;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <h3 style="font-size: 15px; margin: 0; font-weight: 800;">سجل سندات الجرد والتسوية السابقة</h3>
+                        <span style="font-size: 12px; color: var(--text-muted);">تسجيل حركات تسوية الكميات مع السبب وتأثير الفارق</span>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>رقم السند</th>
+                                    <th>الباركود</th>
+                                    <th>اسم الصنف</th>
+                                    <th>الكمية الدفترية</th>
+                                    <th>الكمية الفعلية</th>
+                                    <th>الفارق</th>
+                                    <th>نوع التسوية</th>
+                                    <th>السبب والتفاصيل</th>
+                                    <th>المسؤول</th>
+                                    <th>التاريخ</th>
+                                </tr>
+                            </thead>
+                            <tbody id="stockAdjustmentsTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 9. Central Treasury View (الخزنة المركزية المستقلة) -->
+            <section id="view-treasury" class="view-panel">
+                <div class="view-header">
+                    <div>
+                        <h2>الخزنة المركزية المستقلة (Safe Vault)</h2>
+                        <p style="font-size: 12px; color: var(--text-muted); margin: 0;">حساب الخزنة الرئيسي المستقل تماماً عن درج بيع الكاشير اليومي</p>
+                    </div>
+                    <div style="display: flex; gap: 10px;">
+                        <button id="btnOpenTreasuryDepositModal" class="btn-primary" style="background: var(--accent-emerald); display: flex; align-items: center; gap: 6px;">
+                            <i data-lucide="arrow-down-left" class="icon-sm"></i>
+                            <span>إيداع في الخزنة</span>
+                        </button>
+                        <button id="btnOpenTreasuryWithdrawModal" class="btn-secondary" style="border-color: var(--accent-rose); color: var(--accent-rose); display: flex; align-items: center; gap: 6px;">
+                            <i data-lucide="arrow-up-right" class="icon-sm"></i>
+                            <span>سحب من الخزنة</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="stats-grid">
+                    <div class="stat-card emerald" style="background: #F6FCF8; border-color: var(--accent-emerald);">
+                        <span class="stat-label">رصيد الخزنة المركزية الحالي</span>
+                        <span id="treasuryBalanceVal" class="stat-value" style="font-size: 30px;">0.00 ج.م</span>
+                    </div>
+                    <div class="stat-card cyan">
+                        <span class="stat-label">إجمالي إيداعات اليوم</span>
+                        <span id="treasuryTodayDepositsVal" class="stat-value">0.00 ج.م</span>
+                    </div>
+                    <div class="stat-card rose">
+                        <span class="stat-label">إجمالي سحوبات اليوم</span>
+                        <span id="treasuryTodayWithdrawalsVal" class="stat-value">0.00 ج.م</span>
+                    </div>
+                    <div class="stat-card amber">
+                        <span class="stat-label">توريدات الورديات المحولة</span>
+                        <span id="treasuryShiftsTransferVal" class="stat-value">0.00 ج.م</span>
+                    </div>
+                </div>
+
+                <div style="padding: 0 24px 24px 24px; flex: 1; display: flex; flex-direction: column;">
+                    <h3 style="font-size: 15px; margin-bottom: 12px; font-weight: 800;">سجل حركات الخزنة المركزية</h3>
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>رقم الحركة</th>
+                                    <th>النوع</th>
+                                    <th>المبلغ</th>
+                                    <th>الرصيد بعد الحركة</th>
+                                    <th>المصدر / المستلم</th>
+                                    <th>البيان والتفاصيل</th>
+                                    <th>المسؤول</th>
+                                    <th>التاريخ والوقت</th>
+                                </tr>
+                            </thead>
+                            <tbody id="treasuryTransactionsTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 10. Staff & Payroll View (الموظفين وصرف المرتبات) -->
+            <section id="view-staff" class="view-panel">
+                <div class="view-header">
+                    <div>
+                        <h2>شؤون الموظفين وصرف المرتبات</h2>
+                        <p style="font-size: 12px; color: var(--text-muted); margin: 0;">دليل العاملين، السلف، ومسيرات صرف الرواتب الشهرية</p>
+                    </div>
+                    <div style="display: flex; gap: 10px;">
+                        <button id="btnOpenNewEmployeeModal" class="btn-secondary" style="display: flex; align-items: center; gap: 6px;">
+                            <i data-lucide="user-plus" class="icon-sm"></i>
+                            <span>إضافة موظف جديد</span>
+                        </button>
+                        <button id="btnOpenDisburseSalaryModal" class="btn-primary" style="display: flex; align-items: center; gap: 6px;">
+                            <i data-lucide="banknote" class="icon-sm"></i>
+                            <span>صرف مرتب / سلفة</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div style="padding: 0 24px 16px 24px;">
+                    <div class="segmented-tab-group">
+                        <button class="segmented-tab-btn active" id="tabBtnEmployees" data-staff-tab="employees">
+                            <i data-lucide="users" class="icon-xs"></i>
+                            <span>سجل الموظفين</span>
+                        </button>
+                        <button class="segmented-tab-btn" id="tabBtnSalaries" data-staff-tab="salaries">
+                            <i data-lucide="receipt" class="icon-xs"></i>
+                            <span>سجل صرف الرواتب والسلف</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Staff Tab: Employees -->
+                <div id="staffTabEmployees" style="padding: 0 24px 24px 24px; flex: 1; display: flex; flex-direction: column;">
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>الاسم الكامل</th>
+                                    <th>الوظيفة / الدور</th>
+                                    <th>رقم الهاتف</th>
+                                    <th>الراتب الأساسي</th>
+                                    <th>تاريخ التعيين</th>
+                                    <th>الحالة</th>
+                                </tr>
+                            </thead>
+                            <tbody id="employeesTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Staff Tab: Salaries -->
+                <div id="staffTabSalaries" style="padding: 0 24px 24px 24px; flex: 1; display: none; flex-direction: column;">
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>رقم السند</th>
+                                    <th>اسم الموظف</th>
+                                    <th>النوع</th>
+                                    <th>المبلغ</th>
+                                    <th>طريقة الصرف</th>
+                                    <th>عن شهر / فترة</th>
+                                    <th>المسؤول</th>
+                                    <th>التاريخ</th>
+                                </tr>
+                            </thead>
+                            <tbody id="salariesTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
         </main>
     </div>
 
@@ -747,6 +995,224 @@
             <div class="modal-footer">
                 <button class="btn-secondary modal-close">إلغاء</button>
                 <button id="btnSaveExpense" class="btn-primary">تأكيد الصرف</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Stock Recount & Adjustment Modal -->
+    <div id="modalStockRecount" class="modal-overlay">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3>سند تسوية جرد مخزني فوري</h3>
+                <button class="btn-del modal-close" title="إغلاق"><i data-lucide="x" class="icon-sm"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>اختيار الصنف المراد جرده وتسويته</label>
+                    <select id="recountProductSelect" class="form-control"></select>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div class="form-group">
+                        <label>الرصيد الدفتري الحالي</label>
+                        <input type="number" id="recountCurrentStock" class="form-control" readonly style="background: var(--bg-main); font-weight: bold;">
+                    </div>
+                    <div class="form-group">
+                        <label>الكمية الفعلية المحصية</label>
+                        <input type="number" id="recountActualStock" class="form-control" min="0" step="1" placeholder="أدخل الكمية في الرف...">
+                    </div>
+                </div>
+                <div id="recountDiffBanner" style="display: none; padding: 10px; border-radius: var(--radius-sm); font-size: 13px; font-weight: bold; margin-bottom: 10px;">
+                    <!-- Live difference text -->
+                </div>
+                <div class="form-group">
+                    <label>سبب التسوية المخزنية</label>
+                    <select id="recountReason" class="form-control">
+                        <option value="جرد دوري">جرد دوري مطابق</option>
+                        <option value="تالف / عيوب تصنيع">تالف / عيوب تصنيع</option>
+                        <option value="عجز غير مبرر">عجز وفقدان غير مبرر</option>
+                        <option value="فائض غير مسجل">فائض بضاعة غير مسجلة</option>
+                        <option value="تصحيح رصيد افتتاحي">تصحيح رصيد افتتاحي</option>
+                        <option value="أخرى">أخرى</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>ملاحظات السند والتفاصيل</label>
+                    <input type="text" id="recountNotes" class="form-control" placeholder="ملاحظات تفصيلية حول حركة الجرد...">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary modal-close">إلغاء</button>
+                <button id="btnSubmitStockRecount" class="btn-primary" style="background: var(--primary);">اعتماد وتطبيق سند التسوية</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Treasury Deposit Modal -->
+    <div id="modalTreasuryDeposit" class="modal-overlay">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3>إيداع نقدية في الخزنة المركزية</h3>
+                <button class="btn-del modal-close" title="إغلاق"><i data-lucide="x" class="icon-sm"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>مبلغ الإيداع (ج.م)</label>
+                    <input type="number" id="treasuryDepositAmount" class="form-control" min="1" step="1" placeholder="أدخل المبلغ...">
+                </div>
+                <div class="form-group">
+                    <label>مصدر الإيداع / التصنيف</label>
+                    <select id="treasuryDepositCategory" class="form-control">
+                        <option value="توريد المالك">توريد المالك (رأس مال إضافي)</option>
+                        <option value="تحصيل مديونية خارجية">تحصيل مديونية خارجية</option>
+                        <option value="سحب من حساب بنكي">سحب من حساب بنكي</option>
+                        <option value="أخرى">أخرى</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>المودع / المصدر</label>
+                    <input type="text" id="treasuryDepositPaidBy" class="form-control" placeholder="اسم المودع...">
+                </div>
+                <div class="form-group">
+                    <label>بيان وتفاصيل الإيداع</label>
+                    <input type="text" id="treasuryDepositNotes" class="form-control" placeholder="ملاحظات وتفاصيل السند...">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary modal-close">إلغاء</button>
+                <button id="btnSubmitTreasuryDeposit" class="btn-primary" style="background: var(--accent-emerald);">تأكيد الإيداع في الخزنة</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Treasury Withdraw Modal -->
+    <div id="modalTreasuryWithdraw" class="modal-overlay">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3>سحب نقدية من الخزنة المركزية</h3>
+                <button class="btn-del modal-close" title="إغلاق"><i data-lucide="x" class="icon-sm"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>مبلغ السحب (ج.م)</label>
+                    <input type="number" id="treasuryWithdrawAmount" class="form-control" min="1" step="1" placeholder="أدخل المبلغ...">
+                </div>
+                <div class="form-group">
+                    <label>بند السحب / الغرض</label>
+                    <select id="treasuryWithdrawCategory" class="form-control">
+                        <option value="مسحوبات المالك">مسحوبات المالك الشخصية</option>
+                        <option value="تغذية درج الكاشير">تغذية عهدة درج الكاشير</option>
+                        <option value="سداد التزامات ومصروفات كبرى">سداد التزامات ومصروفات كبرى</option>
+                        <option value="إيداع في بنك">إيداع في حساب بنكي</option>
+                        <option value="أخرى">أخرى</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>المستلم</label>
+                    <input type="text" id="treasuryWithdrawRecipient" class="form-control" placeholder="اسم المستلم...">
+                </div>
+                <div class="form-group">
+                    <label>بيان وتفاصيل السحب</label>
+                    <input type="text" id="treasuryWithdrawNotes" class="form-control" placeholder="ملاحظات وتفاصيل السند...">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary modal-close">إلغاء</button>
+                <button id="btnSubmitTreasuryWithdraw" class="btn-primary" style="background: var(--accent-rose);">تأكيد صرف وسحب المبلغ</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Disburse Salary Modal -->
+    <div id="modalDisburseSalary" class="modal-overlay">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3>سند صرف راتب أو سلفة لموظف</h3>
+                <button class="btn-del modal-close" title="إغلاق"><i data-lucide="x" class="icon-sm"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>الموظف المستفيد</label>
+                    <select id="salaryEmployeeSelect" class="form-control"></select>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div class="form-group">
+                        <label>نوع الصرف</label>
+                        <select id="salaryPaymentType" class="form-control">
+                            <option value="salary">راتب شهري</option>
+                            <option value="advance">سلفة على الراتب</option>
+                            <option value="bonus">مكافأة / حافز</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>المبلغ (ج.م)</label>
+                        <input type="number" id="salaryAmount" class="form-control" min="1" step="1" placeholder="أدخل المبلغ...">
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div class="form-group">
+                        <label>جهة الخصم والصرف</label>
+                        <select id="salarySource" class="form-control">
+                            <option value="treasury">الخزنة المركزية (الآمنة)</option>
+                            <option value="pos_drawer">درج الكاشير اليومي</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>عن شهر / فترة</label>
+                        <input type="text" id="salaryMonthPeriod" class="form-control" placeholder="مثال: أكتوبر 2026">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>ملاحظات السند</label>
+                    <input type="text" id="salaryNotes" class="form-control" placeholder="ملاحظات وتفاصيل الصرف...">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary modal-close">إلغاء</button>
+                <button id="btnSubmitSalaryDisbursement" class="btn-primary" style="background: var(--primary);">تأكيد اعتماد وصرف السند</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- New Employee Modal -->
+    <div id="modalNewEmployee" class="modal-overlay">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3>إضافة موظف جديد إلى السجل</h3>
+                <button class="btn-del modal-close" title="إغلاق"><i data-lucide="x" class="icon-sm"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>الاسم الكامل للموظف</label>
+                    <input type="text" id="empFullName" class="form-control" placeholder="الاسم الثلاثي أو الرباعي...">
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div class="form-group">
+                        <label>المسمى الوظيفي / الدور</label>
+                        <select id="empRoleTitle" class="form-control">
+                            <option value="كاشير">كاشير مبيعات</option>
+                            <option value="مسؤول صالة ومبيعات">مسؤول صالة ومبيعات</option>
+                            <option value="مدير فرع">مدير فرع</option>
+                            <option value="أمين مخزن">أمين مخزن</option>
+                            <option value="عامل متجر">عامل متجر</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>رقم الهاتف</label>
+                        <input type="text" id="empPhone" class="form-control" placeholder="01xxxxxxxxx">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>الراتب الشهري الأساسي (ج.م)</label>
+                    <input type="number" id="empBaseSalary" class="form-control" min="0" step="100" value="3000">
+                </div>
+                <div class="form-group">
+                    <label>ملاحظات إضافية</label>
+                    <input type="text" id="empNotes" class="form-control" placeholder="أي بيانات إضافية...">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary modal-close">إلغاء</button>
+                <button id="btnSubmitNewEmployee" class="btn-primary">حفظ الموظف</button>
             </div>
         </div>
     </div>

@@ -114,6 +114,36 @@ function seedDatabase(dbManager) {
             );
         }
 
+        // 6. Default Employees
+        const empCount = db.get('SELECT COUNT(*) as count FROM employees');
+        if (empCount.count === 0) {
+            const adminUser = db.get('SELECT id FROM users WHERE username = ?', ['ma']);
+            const cashierUser = db.get('SELECT id FROM users WHERE username = ?', ['co']);
+
+            db.run(
+                `INSERT INTO employees (user_id, full_name, job_title, phone, basic_salary, is_active)
+                 VALUES (?, 'محمد أحمد الشريف', 'مدير عام الفرع', '01011112222', 8000.0, 1)`,
+                [adminUser?.id || null]
+            );
+
+            db.run(
+                `INSERT INTO employees (user_id, full_name, job_title, phone, basic_salary, is_active)
+                 VALUES (?, 'عمر خالد الكاشير', 'كاشير ومسؤول مبيعات', '01033334444', 4500.0, 1)`,
+                [cashierUser?.id || null]
+            );
+        }
+
+        // 7. Initial Central Treasury Deposit
+        const treasuryCount = db.get('SELECT COUNT(*) as count FROM central_treasury_transactions');
+        if (treasuryCount.count === 0) {
+            const adminUser = db.get('SELECT id FROM users WHERE username = ?', ['ma']);
+            db.run(
+                `INSERT INTO central_treasury_transactions (transaction_type, amount, source_destination, notes, performed_by)
+                 VALUES ('deposit', 15000.0, 'رأس المال الافتتاحي للخزنة المركزية', 'رصيد افتتاحي رسمي لبداية تشغيل الخزنة', ?)`,
+                [adminUser?.id || 1]
+            );
+        }
+
         return true;
     });
 }

@@ -58,6 +58,21 @@ contextBridge.exposeInMainWorld('api', {
     printZReport: (sessionId) => ipcRenderer.invoke('printer:print-z-report', { sessionId }),
     previewReceiptHtml: (invoiceId) => ipcRenderer.invoke('printer:preview-invoice', { invoiceId }),
 
+    // Treasury & Central Safe
+    getTreasuryBalance: () => ipcRenderer.invoke('treasury:get-balance'),
+    treasuryDeposit: (amount, sourceDestination, notes, userId) => ipcRenderer.invoke('treasury:deposit', { amount, sourceDestination, notes, userId }),
+    treasuryWithdraw: (amount, destination, notes, userId) => ipcRenderer.invoke('treasury:withdraw', { amount, destination, notes, userId }),
+    transferShiftToTreasury: (sessionId, amount, notes, userId) => ipcRenderer.invoke('treasury:transfer-shift', { sessionId, amount, notes, userId }),
+    listTreasuryTransactions: (limit) => ipcRenderer.invoke('treasury:list-transactions', { limit }),
+
+    // Payroll & Employees
+    listEmployees: (onlyActive) => ipcRenderer.invoke('payroll:list-employees', { onlyActive }),
+    createEmployee: (data, userId) => ipcRenderer.invoke('payroll:create-employee', { data, userId }),
+    updateEmployee: (id, data, userId) => ipcRenderer.invoke('payroll:update-employee', { id, data, userId }),
+    disburseSalary: (data, userId) => ipcRenderer.invoke('payroll:disburse-salary', { data, userId }),
+    listSalaryPayments: (limit) => ipcRenderer.invoke('payroll:list-payments', { limit }),
+    listStockAdjustments: (limit) => ipcRenderer.invoke('inventory:list-adjustments', { limit }),
+
     // Settings
     getSettings: () => ipcRenderer.invoke('settings:get-all'),
     updateSettings: (settingsMap, userId) => ipcRenderer.invoke('settings:update', { settingsMap, userId })

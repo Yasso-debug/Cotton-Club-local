@@ -16,6 +16,8 @@ const { ExpenseService } = require('../services/expenseService');
 const { ReportService } = require('../services/reportService');
 const { PrinterService } = require('../services/printerService');
 const { SettingsService } = require('../services/settingsService');
+const { TreasuryService } = require('../services/treasuryService');
+const { PayrollService } = require('../services/payrollService');
 
 let mainWindow = null;
 let db = null;
@@ -26,6 +28,9 @@ function initAppServices() {
     db = getDatabase();
     seedDatabase(db);
 
+    const treasuryService = new TreasuryService(db);
+    const payrollService = new PayrollService(db, treasuryService);
+
     services = {
         auth: new AuthService(db),
         session: new SessionService(db),
@@ -35,7 +40,9 @@ function initAppServices() {
         expenses: new ExpenseService(db),
         reports: new ReportService(db),
         printer: new PrinterService(db),
-        settings: new SettingsService(db)
+        settings: new SettingsService(db),
+        treasury: treasuryService,
+        payroll: payrollService
     };
 }
 
@@ -120,6 +127,21 @@ function registerIpcHandlers() {
         await printHtmlSilent(html);
         return true;
     });
+
+    // Treasury & Central Safe
+    handle('treasury:get-balance', () => services.treasury.getBalance());
+    handle('treasury:deposit', ({ amount, sourceDestination, notes, userId }) => services.treasury.deposit(amount, sourceDestination, notes, userId));
+    handle('treasury:withdraw', ({ amount, destination, notes, userId }) => services.treasury.withdraw(amount, destination, notes, userId));
+    handle('treasury:transfer-shift', ({ sessionId, amount, notes, userId }) => services.treasury.transferFromSession(sessionId, amount, notes, userId));
+    handle('treasury:list-transactions', ({ limit }) => services.treasury.listTransactions(limit));
+
+    // Payroll & Staff
+    handle('payroll:list-employees', ({ onlyActive }) => services.payroll.listEmployees(onlyActive));
+    handle('payroll:create-employee', ({ data, userId }) => services.payroll.createEmployee(data, userId));
+    handle('payroll:update-employee', ({ id, data, userId }) => services.payroll.updateEmployee(id, data, userId));
+    handle('payroll:disburse-salary', ({ data, userId }) => services.payroll.disburseSalary(data, userId));
+    handle('payroll:list-payments', ({ limit }) => services.payroll.listSalaryPayments(limit));
+    handle('inventory:list-adjustments', ({ limit }) => services.inventory.listStockAdjustments(limit));
 
     // Settings
     handle('settings:get-all', () => services.settings.getAllSettings());

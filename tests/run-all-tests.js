@@ -285,6 +285,87 @@ runTest('11. Printer: 80mm & 58mm HTML receipt formatting', () => {
     assert.strictEqual(html.includes('150.00'), true);
 });
 
+// 12. Central Treasury Tests
+const { TreasuryService } = require('../src/services/treasuryService');
+const treasuryService = new TreasuryService(db);
+runTest('12. Central Treasury: Deposit, withdraw, and balance calculations', () => {
+    const admin = db.get("SELECT id FROM users WHERE role = 'admin'");
+    const initial = treasuryService.getBalance();
+    assert.strictEqual(initial.balance >= 15000, true, 'Initial seed deposit must exist');
+
+    // Deposit
+    const dep = treasuryService.deposit(5000, 'إيداع إضافي من صاحب العمل', 'سيولة إضافية', admin.id);
+    assert.strictEqual(dep.amount, 5000);
+    assert.strictEqual(treasuryService.getBalance().balance, initial.balance + 5000);
+
+    // Withdraw
+    const w = treasuryService.withdraw(2000, 'سداد إيجار المحل', 'إيجار شهري', admin.id);
+    assert.strictEqual(w.amount, 2000);
+    assert.strictEqual(treasuryService.getBalance().balance, initial.balance + 3000);
+
+    // Overdraft must throw
+    assert.throws(() => {
+        treasuryService.withdraw(999999, 'سحب مستحيل', '', admin.id);
+    }, /لا يكفي/);
+});
+
+// 13. Payroll & Employee Tests
+const { PayrollService } = require('../src/services/payrollService');
+const payrollService = new PayrollService(db, treasuryService);
+runTest('13. Payroll & Staff: Employee creation and salary disbursement with safe deduction', () => {
+    const admin = db.get("SELECT id FROM users WHERE role = 'admin'");
+    const emps = payrollService.listEmployees();
+    assert.strictEqual(emps.length >= 2, true, 'Default seeded employees must exist');
+
+    // Create new employee
+    const newEmp = payrollService.createEmployee({
+        fullName: 'حسام حسن',
+        jobTitle: 'بائع ملابس أول',
+        phone: '01055556666',
+        basicSalary: 4000
+    }, admin.id);
+    assert.strictEqual(newEmp.full_name, 'حسام حسن');
+
+    // Disburse salary advance from Central Treasury
+    const safeBefore = treasuryService.getBalance().balance;
+    const payment = payrollService.disburseSalary({
+        employeeId: newEmp.id,
+        amount: 1000,
+        paymentType: 'advance',
+        paymentSource: 'treasury',
+        notes: 'سلفة على الراتب'
+    }, admin.id);
+
+    assert.strictEqual(payment.voucher_number.startsWith('SAL-'), true);
+    assert.strictEqual(payment.amount, 1000);
+    assert.strictEqual(treasuryService.getBalance().balance, safeBefore - 1000, 'Treasury must decrease by salary amount');
+
+    const paymentList = payrollService.listSalaryPayments();
+    assert.strictEqual(paymentList.length >= 1, true);
+});
+
+// 14. Stock Adjustment Recount Tests
+runTest('14. Stock Audit: Inventory recount and adjustment vouchers', () => {
+    const admin = db.get("SELECT id FROM users WHERE role = 'admin'");
+    const prod = db.get('SELECT * FROM products LIMIT 1');
+
+    const recountRes = inventoryService.adjustStock({
+        productId: prod.id,
+        adjustmentType: 'recount',
+        quantity: 75,
+        reason: 'inventory_count',
+        notes: 'جرد يدوي فعلي'
+    }, admin.id, null);
+
+    assert.strictEqual(recountRes.newStock, 75);
+    const updatedProd = inventoryService.getProductById(prod.id);
+    assert.strictEqual(updatedProd.current_stock, 75);
+
+    const adjustments = inventoryService.listStockAdjustments();
+    assert.strictEqual(adjustments.length >= 1, true);
+    assert.strictEqual(adjustments[0].reason, 'inventory_count');
+});
+
 console.log('\n====================================================');
 console.log(`🎉 All ${passedTests}/${totalTests} tests PASSED successfully!`);
 console.log('====================================================');
