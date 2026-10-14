@@ -19,7 +19,10 @@ CREATE TABLE IF NOT EXISTS users (
 -- 2. Categories
 CREATE TABLE IF NOT EXISTS categories (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    category_code TEXT UNIQUE,
     name TEXT NOT NULL UNIQUE,
+    parent_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
+    display_order INTEGER NOT NULL DEFAULT 0,
     description TEXT,
     is_active INTEGER NOT NULL DEFAULT 1 CHECK(is_active IN (0, 1)),
     created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
@@ -28,13 +31,20 @@ CREATE TABLE IF NOT EXISTS categories (
 -- 3. Products & Inventory
 CREATE TABLE IF NOT EXISTS products (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    barcode TEXT NOT NULL UNIQUE,
+    product_code TEXT UNIQUE,
+    barcode TEXT,
     item_name TEXT NOT NULL,
     category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
+    brand TEXT,
+    unit_of_measure TEXT NOT NULL DEFAULT 'piece',
     cost_price REAL NOT NULL CHECK(cost_price >= 0),
     sell_price REAL NOT NULL CHECK(sell_price >= 0),
+    wholesale_price REAL NOT NULL DEFAULT 0 CHECK(wholesale_price >= 0),
+    min_selling_price REAL NOT NULL DEFAULT 0 CHECK(min_selling_price >= 0),
     current_stock REAL NOT NULL DEFAULT 0,
     min_stock_alert REAL NOT NULL DEFAULT 5 CHECK(min_stock_alert >= 0),
+    reorder_level REAL NOT NULL DEFAULT 5 CHECK(reorder_level >= 0),
+    status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'inactive')),
     is_active INTEGER NOT NULL DEFAULT 1 CHECK(is_active IN (0, 1)),
     created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
@@ -98,11 +108,15 @@ CREATE TABLE IF NOT EXISTS payment_splits (
 -- 8. Suppliers
 CREATE TABLE IF NOT EXISTS suppliers (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    supplier_code TEXT UNIQUE,
     name TEXT NOT NULL UNIQUE,
+    contact_person TEXT,
     phone TEXT,
     email TEXT,
     address TEXT,
+    opening_balance REAL NOT NULL DEFAULT 0,
     balance REAL NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'inactive', 'blacklisted')),
     is_active INTEGER NOT NULL DEFAULT 1 CHECK(is_active IN (0, 1)),
     created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
@@ -113,10 +127,15 @@ CREATE TABLE IF NOT EXISTS purchase_invoices (
     invoice_number TEXT NOT NULL UNIQUE,
     supplier_id INTEGER NOT NULL REFERENCES suppliers(id),
     session_id INTEGER REFERENCES daily_sessions(id),
+    subtotal REAL NOT NULL DEFAULT 0,
+    discount_amount REAL NOT NULL DEFAULT 0,
+    shipping_cost REAL NOT NULL DEFAULT 0,
+    tax_amount REAL NOT NULL DEFAULT 0,
     total_amount REAL NOT NULL CHECK(total_amount >= 0),
     paid_amount REAL NOT NULL DEFAULT 0 CHECK(paid_amount >= 0),
     remaining_amount REAL NOT NULL CHECK(remaining_amount >= 0),
     payment_status TEXT NOT NULL CHECK(payment_status IN ('paid', 'partial', 'unpaid')),
+    payment_breakdown TEXT,
     notes TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
@@ -128,18 +147,23 @@ CREATE TABLE IF NOT EXISTS purchase_line_items (
     product_id INTEGER NOT NULL REFERENCES products(id),
     quantity REAL NOT NULL CHECK(quantity > 0),
     unit_cost REAL NOT NULL CHECK(unit_cost >= 0),
+    sell_price REAL NOT NULL DEFAULT 0,
+    discount_percent REAL NOT NULL DEFAULT 0,
     line_total REAL NOT NULL CHECK(line_total >= 0)
 );
 
 -- 11. Supplier Payments
 CREATE TABLE IF NOT EXISTS supplier_payments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    voucher_number TEXT UNIQUE,
     supplier_id INTEGER NOT NULL REFERENCES suppliers(id),
     purchase_invoice_id INTEGER REFERENCES purchase_invoices(id),
     session_id INTEGER REFERENCES daily_sessions(id),
     amount REAL NOT NULL CHECK(amount > 0),
-    payment_method TEXT NOT NULL CHECK(payment_method IN ('cash', 'card', 'bank_transfer')),
+    payment_method TEXT NOT NULL,
+    payment_breakdown TEXT,
     notes TEXT,
+    created_by INTEGER REFERENCES users(id),
     created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 
@@ -216,7 +240,32 @@ CREATE TABLE IF NOT EXISTS salary_payments (
     paid_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 
--- 18. Audit Log
+-- 18. Purchase Returns (مرتجعات المشتريات للموردين)
+CREATE TABLE IF NOT EXISTS purchase_returns (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    return_number TEXT NOT NULL UNIQUE,
+    purchase_invoice_id INTEGER NOT NULL REFERENCES purchase_invoices(id),
+    supplier_id INTEGER NOT NULL REFERENCES suppliers(id),
+    total_returned_amount REAL NOT NULL CHECK(total_returned_amount >= 0),
+    refund_method TEXT NOT NULL,
+    refund_breakdown TEXT,
+    reason TEXT,
+    notes TEXT,
+    created_by INTEGER REFERENCES users(id),
+    created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+
+-- 19. Purchase Return Line Items
+CREATE TABLE IF NOT EXISTS purchase_return_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    purchase_return_id INTEGER NOT NULL REFERENCES purchase_returns(id) ON DELETE CASCADE,
+    product_id INTEGER NOT NULL REFERENCES products(id),
+    returned_quantity REAL NOT NULL CHECK(returned_quantity > 0),
+    unit_cost REAL NOT NULL CHECK(unit_cost >= 0),
+    total_cost REAL NOT NULL CHECK(total_cost >= 0)
+);
+
+-- 20. Audit Log
 CREATE TABLE IF NOT EXISTS audit_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER REFERENCES users(id),

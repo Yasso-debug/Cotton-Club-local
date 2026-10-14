@@ -169,6 +169,213 @@ class ReportService {
             activeSessionCode: activeSession?.session_code || null
         };
     }
+
+    /**
+     * Comprehensive Analytics & BI Dashboard
+     * Powers Executive KPIs, Trend Visualizations, Categories, and Sellers Performance
+     */
+    getComprehensiveAnalytics(filters = {}) {
+        const { startDate, endDate, sellerId } = filters;
+
+        let whereClause = "WHERE si.status = 'completed'";
+        const params = [];
+
+        let dateCond = '';
+        const dateParams = [];
+
+        if (startDate && endDate) {
+            whereClause += ' AND date(si.created_at) >= date(?) AND date(si.created_at) <= date(?)';
+            params.push(startDate, endDate);
+
+            dateCond = 'AND date(si.created_at) >= date(?) AND date(si.created_at) <= date(?)';
+            dateParams.push(startDate, endDate);
+        } else if (startDate) {
+            whereClause += ' AND date(si.created_at) >= date(?)';
+            params.push(startDate);
+
+            dateCond = 'AND date(si.created_at) >= date(?)';
+            dateParams.push(startDate);
+        } else if (endDate) {
+            whereClause += ' AND date(si.created_at) <= date(?)';
+            params.push(endDate);
+
+            dateCond = 'AND date(si.created_at) <= date(?)';
+            dateParams.push(endDate);
+        }
+
+        if (sellerId) {
+            whereClause += ' AND si.user_id = ?';
+            params.push(sellerId);
+        }
+
+        // 1. Overall KPIs
+        const totals = this.db.get(
+            `SELECT 
+                COUNT(*) as total_invoices,
+                COALESCE(SUM(si.subtotal), 0) as gross_subtotal,
+                COALESCE(SUM(si.discount_amount), 0) as total_discounts,
+                COALESCE(SUM(si.final_total), 0) as net_sales,
+                COALESCE(SUM(si.total_cost), 0) as total_cost,
+                COALESCE(SUM(si.final_total - si.total_cost), 0) as gross_profit
+            FROM sales_invoices si
+            ${whereClause}`,
+            params
+        );
+
+        const piecesRow = this.db.get(
+            `SELECT COALESCE(SUM(sli.quantity), 0) as total_pieces
+            FROM sale_line_items sli
+            JOIN sales_invoices si ON sli.invoice_id = si.id
+            ${whereClause}`,
+            params
+        );
+
+        const netSales = totals?.net_sales || 0;
+        const grossProfit = totals?.gross_profit || 0;
+        const totalInvoices = totals?.total_invoices || 0;
+        const totalDiscounts = totals?.total_discounts || 0;
+        const totalPieces = piecesRow?.total_pieces || 0;
+
+        const profitMargin = netSales > 0 ? Math.round((grossProfit / netSales) * 1000) / 10 : 0;
+        const avgOrderValue = totalInvoices > 0 ? Math.round((netSales / totalInvoices) * 100) / 100 : 0;
+        const discountRate = (netSales + totalDiscounts) > 0 ? Math.round((totalDiscounts / (netSales + totalDiscounts)) * 1000) / 10 : 0;
+        const avgBasketPieces = totalInvoices > 0 ? Math.round((totalPieces / totalInvoices) * 10) / 10 : 0;
+
+        // 2. Timeline (Daily Trend)
+        const timeline = this.db.all(
+            `SELECT 
+                date(si.created_at) as sale_date,
+                COUNT(si.id) as invoices_count,
+                COALESCE(SUM(si.final_total), 0) as day_revenue,
+                COALESCE(SUM(si.final_total - si.total_cost), 0) as day_profit,
+                COALESCE(SUM(sli_sum.pieces), 0) as day_pieces
+            FROM sales_invoices si
+            LEFT JOIN (
+                SELECT invoice_id, SUM(quantity) as pieces 
+                FROM sale_line_items 
+                GROUP BY invoice_id
+            ) sli_sum ON sli_sum.invoice_id = si.id
+            ${whereClause}
+            GROUP BY date(si.created_at)
+            ORDER BY sale_date ASC LIMIT 30`,
+            params
+        );
+
+        // 3. Category Contribution
+        const categories = this.db.all(
+            `SELECT 
+                COALESCE(c.name, 'أصناف عامة') as category_name,
+                COALESCE(SUM(sli.quantity), 0) as units_sold,
+                COALESCE(SUM(sli.line_total), 0) as category_revenue,
+                COALESCE(SUM(sli.line_profit), 0) as category_profit
+            FROM sale_line_items sli
+            JOIN sales_invoices si ON sli.invoice_id = si.id
+            JOIN products p ON sli.product_id = p.id
+            LEFT JOIN categories c ON p.category_id = c.id
+            ${whereClause}
+            GROUP BY c.id
+            ORDER BY category_revenue DESC`,
+            params
+        );
+
+        (categories || []).forEach(cat => {
+            cat.share_percent = netSales > 0 ? Math.round((cat.category_revenue / netSales) * 1000) / 10 : 0;
+            cat.profit_margin = cat.category_revenue > 0 ? Math.round((cat.category_profit / cat.category_revenue) * 1000) / 10 : 0;
+        });
+
+        // 4. Payment breakdown
+        const tenders = this.db.all(
+            `SELECT 
+                si.payment_method,
+                COUNT(*) as count,
+                COALESCE(SUM(si.final_total), 0) as total
+            FROM sales_invoices si
+            ${whereClause}
+            GROUP BY si.payment_method`,
+            params
+        );
+
+        // 5. Sellers Performance
+        let sellerQuery = `
+            SELECT 
+                u.id as user_id,
+                u.display_name,
+                u.username,
+                u.role,
+                COUNT(si.id) as invoices_count,
+                COALESCE(SUM(si.final_total), 0) as total_sales,
+                COALESCE(SUM(si.total_cost), 0) as total_cost,
+                COALESCE(SUM(si.final_total - si.total_cost), 0) as total_profit,
+                COALESCE(SUM(si.discount_amount), 0) as total_discounts,
+                COALESCE(AVG(si.final_total), 0) as avg_order_value,
+                COALESCE(SUM(sli_sum.pieces), 0) as total_pieces
+            FROM users u
+            JOIN sales_invoices si ON si.user_id = u.id AND si.status = 'completed' ${dateCond}
+            LEFT JOIN (
+                SELECT invoice_id, SUM(quantity) as pieces 
+                FROM sale_line_items 
+                GROUP BY invoice_id
+            ) sli_sum ON sli_sum.invoice_id = si.id
+        `;
+        const sellerQueryParams = [...dateParams];
+        if (sellerId) {
+            sellerQuery += ' WHERE u.id = ?';
+            sellerQueryParams.push(sellerId);
+        }
+        sellerQuery += ' GROUP BY u.id ORDER BY total_sales DESC';
+
+        const sellers = this.db.all(sellerQuery, sellerQueryParams);
+        (sellers || []).forEach((s, idx) => {
+            s.sales_share = netSales > 0 ? Math.round((s.total_sales / netSales) * 1000) / 10 : 0;
+            s.discount_rate = (s.total_sales + s.total_discounts) > 0 ? Math.round((s.total_discounts / (s.total_sales + s.total_discounts)) * 1000) / 10 : 0;
+            s.badge = idx === 0 ? 'top_performer' : (s.total_sales >= 500 ? 'high_volume' : 'active');
+            s.avg_order_value = Math.round(s.avg_order_value * 100) / 100;
+        });
+
+        // 6. Top Movers (Top 10 products)
+        const topProducts = this.db.all(
+            `SELECT 
+                sli.product_id,
+                sli.item_name,
+                sli.barcode,
+                COALESCE(c.name, 'عام') as category_name,
+                COALESCE(SUM(sli.quantity), 0) as total_quantity_sold,
+                COALESCE(SUM(sli.line_total), 0) as total_revenue,
+                COALESCE(SUM(sli.line_profit), 0) as total_profit,
+                COALESCE(AVG(sli.unit_price), 0) as avg_unit_price
+            FROM sale_line_items sli
+            JOIN sales_invoices si ON sli.invoice_id = si.id
+            JOIN products p ON sli.product_id = p.id
+            LEFT JOIN categories c ON p.category_id = c.id
+            ${whereClause}
+            GROUP BY sli.product_id
+            ORDER BY total_revenue DESC LIMIT 10`,
+            params
+        );
+
+        // 7. Users list for seller filter dropdown
+        const allSellers = this.db.all('SELECT id, display_name, username, role FROM users ORDER BY display_name ASC', []);
+
+        return {
+            kpis: {
+                netSales,
+                grossProfit,
+                profitMargin,
+                totalInvoices,
+                avgOrderValue,
+                totalDiscounts,
+                discountRate,
+                totalPieces,
+                avgBasketPieces
+            },
+            timeline: timeline || [],
+            categories: categories || [],
+            tenders: tenders || [],
+            sellers: sellers || [],
+            topProducts: topProducts || [],
+            allSellers: allSellers || []
+        };
+    }
 }
 
 module.exports = { ReportService };

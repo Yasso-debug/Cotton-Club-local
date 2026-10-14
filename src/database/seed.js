@@ -20,7 +20,7 @@ function seedDatabase(dbManager) {
                 [maHash]
             );
         } else {
-            db.run('UPDATE users SET password_hash = ?, is_active = 1 WHERE username = ?', [maHash, 'ma']);
+            db.run('UPDATE users SET is_active = 1 WHERE username = ?', ['ma']);
         }
 
         // Upsert or insert cashier 'co'
@@ -28,11 +28,11 @@ function seedDatabase(dbManager) {
         if (!existingCo) {
             db.run(
                 `INSERT INTO users (username, password_hash, display_name, role, is_active)
-                 VALUES ('co', ?, 'كاشير المحل (co)', 'cashier', 1)`,
+                 VALUES ('co', ?, 'مسؤول المبيعات (co)', 'cashier', 1)`,
                 [coHash]
             );
         } else {
-            db.run('UPDATE users SET password_hash = ?, is_active = 1 WHERE username = ?', [coHash, 'co']);
+            db.run('UPDATE users SET is_active = 1 WHERE username = ?', ['co']);
         }
 
         // 2. Default Categories

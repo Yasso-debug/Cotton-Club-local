@@ -366,6 +366,477 @@ runTest('14. Stock Audit: Inventory recount and adjustment vouchers', () => {
     assert.strictEqual(adjustments[0].reason, 'inventory_count');
 });
 
+// 15. Dual-View Suppliers Master: Strict 5-Field Modal & KPI Overview
+purchaseService.treasuryService = treasuryService;
+let testSupplier = null;
+
+runTest('15. Suppliers Master: Strict 5-Field Standard Profile & KPI Overview', () => {
+    const admin = db.get("SELECT id FROM users WHERE role = 'admin'");
+    
+    // Strict 5 fields create
+    testSupplier = purchaseService.createSupplier({
+        supplier_name: 'شركة النسيج الملكي الحديث',
+        contact_person: 'م. أحمد شكري',
+        phone: '01011223344',
+        address: 'المحلة الكبرى - المنطقة الصناعية',
+        opening_balance: 5000
+    }, admin.id);
+
+    assert.ok(testSupplier.id, 'Supplier should have an ID');
+    assert.strictEqual(testSupplier.supplier_code.startsWith('SUP-'), true, 'Code should follow SUP-XXXX format');
+    assert.strictEqual(testSupplier.name, 'شركة النسيج الملكي الحديث');
+    assert.strictEqual(testSupplier.balance, 5000, 'Initial balance must match opening_balance');
+
+    // Update supplier (Strict 5 fields standard)
+    const updated = purchaseService.updateSupplier(testSupplier.id, {
+        supplier_name: 'شركة النسيج الملكي المتطورة',
+        contact_person: 'م. أحمد شكري',
+        phone: '01011223399',
+        address: 'المحلة الكبرى - شارع البحر',
+        status: 'active'
+    }, admin.id);
+    assert.strictEqual(updated.name, 'شركة النسيج الملكي المتطورة');
+    assert.strictEqual(updated.phone, '01011223399');
+
+    // Overview KPIs
+    const overview = purchaseService.getSuppliersOverview();
+    assert.ok(overview.totalSuppliers >= 1, 'Total suppliers count must exist');
+    assert.ok(overview.totalPayables >= 5000, 'Total payables must sum positive balances');
+    assert.ok(overview.dueSuppliersCount >= 1, 'Due suppliers count must exist');
+
+    // Filter search
+    const filtered = purchaseService.listSuppliers({ search: 'المتطورة' });
+    assert.strictEqual(filtered.length, 1);
+    assert.strictEqual(filtered[0].id, testSupplier.id);
+});
+
+// 16. Split Payment Engine, Treasury Solvency Check & Full-Page Ledger
+runTest('16. Suppliers: Split Payment, Treasury Solvency Check & Statement Ledger', () => {
+    const admin = db.get("SELECT id FROM users WHERE role = 'admin'");
+    const treasuryBal = treasuryService.getBalance().balance;
+
+    // 1. Solvency check rejection when cash overdraft attempted
+    assert.throws(() => {
+        purchaseService.recordSupplierSplitPayment({
+            supplierId: testSupplier.id,
+            totalAmount: treasuryBal + 5000,
+            paymentBreakdown: {
+                cash: treasuryBal + 5000,
+                bankTransfer: 0,
+                eWallet: 0
+            },
+            notes: 'محاولة دفع كاش تفوق رصيد الخزينة'
+        }, admin.id);
+    }, /رصيد الكاش بالخزينة المركزية غير كافٍ/);
+
+    // 2. Reject prohibited payment methods (e.g. visa / cheques)
+    assert.throws(() => {
+        purchaseService.recordSupplierSplitPayment({
+            supplierId: testSupplier.id,
+            totalAmount: 1000,
+            paymentBreakdown: {
+                cash: 500,
+                visa: 500
+            },
+            notes: 'طريقة دفع غير مسموحة'
+        }, admin.id);
+    }, /طرق الدفع المسموحة هي: كاش، إنستاباي، محافظ إلكترونية فقط/);
+
+    // 3. Valid split payment: 2000 total (1000 cash, 500 instapay, 500 ewallet)
+    const safeBefore = treasuryService.getBalance().balance;
+    const payment = purchaseService.recordSupplierSplitPayment({
+        supplierId: testSupplier.id,
+        totalAmount: 2000,
+        paymentBreakdown: {
+            cash: 1000,
+            bankTransfer: 500,
+            eWallet: 500
+        },
+        notes: 'دفعة مجزأة تجريبية'
+    }, admin.id);
+
+    assert.ok(payment.voucher_number.startsWith('SPAY-'), 'Payment voucher number must start with SPAY-');
+    assert.strictEqual(payment.amount, 2000);
+    assert.strictEqual(treasuryService.getBalance().balance, safeBefore - 1000, 'Central Treasury must deduct cash portion only');
+
+    // Supplier balance should have decreased by 2000: 5000 - 2000 = 3000
+    const supAfter = db.get('SELECT balance FROM suppliers WHERE id = ?', [testSupplier.id]);
+    assert.strictEqual(supAfter.balance, 3000);
+
+    // 4. View A: Full-page statement ledger verification
+    const ledgerData = purchaseService.getSupplierLedger(testSupplier.id);
+    assert.strictEqual(ledgerData.supplier.id, testSupplier.id);
+    assert.ok(ledgerData.movements.length >= 1, 'Should have recorded payment in movements');
+    assert.strictEqual(ledgerData.summary.currentBalance, 3000);
+    assert.strictEqual(ledgerData.summary.totalPayments, 2000);
+
+    // Running balance check
+    const lastMv = ledgerData.movements[ledgerData.movements.length - 1];
+    assert.strictEqual(lastMv.balanceAfter, 3000);
+});
+
+// 17. Categories Hierarchy, Auto CAT-XX Generation, Linked Items Count & Protected Deletion
+runTest('17. Catalog: Categories Hierarchy, CAT-XX Codes & Protected Deletion', () => {
+    // 1. Create parent category
+    const parentCat = inventoryService.createCategory({
+        name: 'الملابس الرجالية الصيفية',
+        description: 'تشكيلة صيفية متميزة',
+        displayOrder: 1
+    });
+    assert.ok(parentCat.id, 'Parent category must have an ID');
+    assert.ok(parentCat.category_code.startsWith('CAT-'), 'Category code must follow CAT-XX format');
+
+    // 2. Create subcategory
+    const subCat = inventoryService.createCategory({
+        name: 'قمصان كلاسيك كتان',
+        parentId: parentCat.id,
+        displayOrder: 2
+    });
+    assert.strictEqual(subCat.parent_id, parentCat.id, 'Parent ID must be linked');
+    assert.ok(subCat.category_code.startsWith('CAT-'), 'Subcategory code must follow CAT-XX format');
+
+    // 3. Update category
+    const updatedCat = inventoryService.updateCategory(subCat.id, {
+        name: 'قمصان كلاسيك كتان فاخر',
+        displayOrder: 5
+    });
+    assert.strictEqual(updatedCat.name, 'قمصان كلاسيك كتان فاخر');
+    assert.strictEqual(updatedCat.display_order, 5);
+
+    // 4. Verify listCategories includes parent_name and items_count
+    const catList = inventoryService.listCategories({ search: 'كتان فاخر' });
+    assert.strictEqual(catList.length, 1);
+    assert.strictEqual(catList[0].parent_name, 'الملابس الرجالية الصيفية');
+    assert.strictEqual(catList[0].items_count, 0);
+
+    // 5. Add product linked to this subcategory
+    const admin = db.get("SELECT id FROM users WHERE role = 'admin'");
+    const prod = inventoryService.createProduct({
+        itemName: 'قميص كتان بيج مقاس L',
+        categoryId: subCat.id,
+        costPrice: 160,
+        sellPrice: 290,
+        initialStock: 10,
+        reorderLevel: 5
+    }, admin.id);
+
+    // 6. Protected delete: must block deletion while products exist
+    assert.throws(() => {
+        inventoryService.deleteCategory(subCat.id);
+    }, /لا يمكن حذف المجموعة لاحتوائها على/);
+
+    // 7. Delete product, then category deletion must succeed
+    inventoryService.deleteProduct(prod.id, admin.id);
+    const delResult = inventoryService.deleteCategory(subCat.id);
+    assert.strictEqual(delResult.success, true);
+});
+
+// 18. Simplified Master Items Catalog, ITM-XXXXXX, Pricing & 4 Executive KPIs
+runTest('18. Catalog: Simplified Items, ITM-XXXXXX Codes & 4 Executive KPIs', () => {
+    const admin = db.get("SELECT id FROM users WHERE role = 'admin'");
+
+    // 1. Create product with fast 2-section parameters
+    const newProd = inventoryService.createProduct({
+        itemName: 'تيشيرت بولو قطن مصري ممتاز',
+        costPrice: 120,
+        sellPrice: 220,
+        wholesalePrice: 180,
+        minSellingPrice: 200,
+        initialStock: 15,
+        reorderLevel: 5,
+        brand: 'Cotton Club Master',
+        unitOfMeasure: 'قطعة'
+    }, admin.id);
+
+    assert.ok(newProd.id, 'Product must have an ID');
+    assert.ok(newProd.product_code.startsWith('ITM-'), 'Product code must follow ITM-XXXXXX');
+    assert.strictEqual(newProd.barcode, newProd.product_code, 'Barcode should default to product_code if empty');
+    assert.strictEqual(newProd.wholesale_price, 180);
+    assert.strictEqual(newProd.min_selling_price, 200);
+
+    // 2. Update product
+    const updatedProd = inventoryService.updateProduct(newProd.id, {
+        itemName: 'تيشيرت بولو قطن مصري فاخر',
+        wholesalePrice: 185
+    }, admin.id);
+    assert.strictEqual(updatedProd.item_name, 'تيشيرت بولو قطن مصري فاخر');
+    assert.strictEqual(updatedProd.wholesale_price, 185);
+
+    // 3. Test getCatalogOverview returning 4 KPIs
+    const kpis = inventoryService.getCatalogOverview();
+    assert.ok(typeof kpis.total_categories === 'number', 'total_categories KPI must exist');
+    assert.ok(typeof kpis.total_products === 'number', 'total_products KPI must exist');
+    assert.ok(typeof kpis.low_stock_count === 'number', 'low_stock_count KPI must exist');
+    assert.ok(typeof kpis.out_of_stock_count === 'number', 'out_of_stock_count KPI must exist');
+    assert.ok(kpis.total_products >= 1, 'Should count active products');
+
+    // 4. Test stockStatus filter queries
+    const inStockList = inventoryService.listProducts({ stockStatus: 'in_stock' });
+    assert.ok(inStockList.some(p => p.id === newProd.id), 'Newly created product must appear in in_stock filter');
+
+    // 5. Test soft delete product
+    const delRes = inventoryService.deleteProduct(newProd.id, admin.id);
+    assert.strictEqual(delRes.success, true);
+
+    const recheck = inventoryService.listProducts({ search: newProd.product_code });
+    assert.strictEqual(recheck.length, 0, 'Deleted product must not be returned in catalog list');
+});
+
+// 19. Enhanced Purchase Invoices & Stock Audit Reconciliation
+runTest('19. Purchase Invoices & Stock Audit: Detailed voucher retrieval & cost updates', () => {
+    const admin = db.get("SELECT id FROM users WHERE role = 'admin'");
+    const supplier = db.get('SELECT id, balance FROM suppliers LIMIT 1');
+    const product = db.get('SELECT id, current_stock, cost_price FROM products WHERE is_active = 1 LIMIT 1');
+
+    const prevStock = product.current_stock;
+    const initialSupBalance = Number(supplier.balance);
+
+    // 1. Create Purchase Invoice with multi-tender split and sell price update
+    const invoice = purchaseService.createPurchaseInvoice({
+        supplierId: supplier.id,
+        items: [
+            { productId: product.id, quantity: 5, unitCost: 150.0, sellPrice: 280.0, discountPercent: 0 }
+        ],
+        subtotal: 750.0,
+        discountAmount: 50.0,
+        shippingCost: 30.0,
+        taxAmount: 20.0,
+        paymentBreakdown: { cash: 100.0, bankTransfer: 150.0, eWallet: 0 },
+        payFromTreasury: false,
+        notes: 'توريد دفعة تجريبية فنية بنظام السداد المقسم'
+    }, admin.id);
+
+    assert.ok(invoice.id, 'Purchase invoice must be created');
+    // Total = 750 - 50 + 30 + 20 = 750
+    assert.strictEqual(invoice.total_amount, 750.0);
+    assert.strictEqual(invoice.paid_amount, 250.0);
+    assert.strictEqual(invoice.remaining_amount, 500.0);
+    assert.strictEqual(invoice.payment_status, 'partial');
+
+    // Verify stock, cost price & sell price updated
+    const updatedProd = db.get('SELECT current_stock, cost_price, sell_price FROM products WHERE id = ?', [product.id]);
+    assert.strictEqual(updatedProd.current_stock, prevStock + 5);
+    assert.strictEqual(updatedProd.cost_price, 150.0);
+    assert.strictEqual(updatedProd.sell_price, 280.0);
+
+    // Verify supplier balance increased by remaining
+    const updatedSup = db.get('SELECT balance FROM suppliers WHERE id = ?', [supplier.id]);
+    assert.strictEqual(Math.round(updatedSup.balance * 100) / 100, Math.round((initialSupBalance + 500.0) * 100) / 100);
+
+    // Verify getPurchaseInvoiceById returns invoice with line items including sell_price & category_name
+    const fetchedInv = purchaseService.getPurchaseInvoiceById(invoice.id);
+    assert.ok(fetchedInv, 'Invoice must be found by ID');
+    assert.strictEqual(fetchedInv.items.length, 1);
+    assert.strictEqual(fetchedInv.items[0].product_id, product.id);
+    assert.strictEqual(fetchedInv.items[0].sell_price, 280.0);
+
+    // 2. Perform Stock Audit Recount
+    const targetStock = updatedProd.current_stock + 2;
+    const adjustRes = inventoryService.adjustStock({
+        productId: product.id,
+        adjustmentType: 'recount',
+        quantity: targetStock,
+        reason: 'inventory_count',
+        notes: 'مطابقة جرد فني'
+    }, admin.id, null);
+
+    assert.ok(adjustRes.adjustmentId, 'Adjustment voucher must be logged');
+    assert.strictEqual(adjustRes.newStock, targetStock);
+
+    // Verify listStockAdjustments returns cost_price
+    const adjList = inventoryService.listStockAdjustments(10);
+    const matchedAdj = adjList.find(a => a.id === adjustRes.adjustmentId);
+    assert.ok(matchedAdj, 'Adjustment must be listed in audit log');
+    assert.strictEqual(matchedAdj.cost_price, 150.0);
+});
+
+// 20. Split Payment Multi-Tender with Credit (آجل) & Supplier Debt Ledger
+runTest('20. Purchase Invoices: Split Payment with Credit (آجل) & Supplier Debt Accumulation', () => {
+    const admin = db.get("SELECT id FROM users WHERE role = 'admin'");
+    const supplier = db.get('SELECT id, balance FROM suppliers LIMIT 1');
+    const product = db.get('SELECT id, current_stock, cost_price FROM products WHERE is_active = 1 LIMIT 1');
+
+    const initialSupBalance = Number(supplier.balance);
+    const safeBefore = treasuryService.getBalance().balance;
+
+    // Create Purchase invoice: Total 1200 EGP
+    // Split payment: 300 Cash, 200 Bank Transfer, 100 eWallet, 600 Credit (آجل)
+    const invoice = purchaseService.createPurchaseInvoice({
+        supplierId: supplier.id,
+        items: [
+            { productId: product.id, quantity: 4, unitCost: 300.0, sellPrice: 500.0, discountPercent: 0 }
+        ],
+        subtotal: 1200.0,
+        discountAmount: 0.0,
+        shippingCost: 0.0,
+        taxAmount: 0.0,
+        paymentBreakdown: { cash: 300.0, bankTransfer: 200.0, eWallet: 100.0, credit: 600.0 },
+        payFromTreasury: true,
+        notes: 'فاتورة توريد مجزأة: كاش وبنك ومحفظة وآجل'
+    }, admin.id);
+
+    assert.ok(invoice.id, 'Purchase invoice must be created');
+    assert.strictEqual(invoice.total_amount, 1200.0);
+    assert.strictEqual(invoice.paid_amount, 600.0, 'Total paid immediate must be 300+200+100 = 600');
+    assert.strictEqual(invoice.remaining_amount, 600.0, 'Remaining credit debt must be 600');
+    assert.strictEqual(invoice.payment_status, 'partial');
+
+    // Parse breakdown from invoice
+    const breakdown = typeof invoice.payment_breakdown === 'string' ? JSON.parse(invoice.payment_breakdown) : invoice.payment_breakdown;
+    assert.strictEqual(breakdown.cash, 300.0);
+    assert.strictEqual(breakdown.bankTransfer, 200.0);
+    assert.strictEqual(breakdown.eWallet, 100.0);
+    assert.strictEqual(breakdown.credit, 600.0, 'Credit amount must be explicitly saved in breakdown');
+
+    // Verify treasury was deducted ONLY for cashPart (300 EGP), not credit
+    const safeAfter = treasuryService.getBalance().balance;
+    assert.strictEqual(safeAfter, safeBefore - 300.0, 'Treasury must only deduct cash portion');
+
+    // Verify supplier balance increased by the remaining credit debt (600 EGP)
+    const updatedSup = db.get('SELECT balance FROM suppliers WHERE id = ?', [supplier.id]);
+    assert.strictEqual(Math.round(updatedSup.balance * 100) / 100, Math.round((initialSupBalance + 600.0) * 100) / 100, 'Supplier balance must increase by credit debt');
+
+    // Verify supplier statement ledger records the invoice and movement
+    const statement = purchaseService.getSupplierAccountStatement(supplier.id);
+    assert.ok(statement.movements.length >= 1, 'Statement must have movements');
+    const invMovement = statement.movements.find(m => m.referenceNumber === invoice.invoice_number);
+    assert.ok(invMovement, 'Invoice must appear in account statement movements');
+    assert.strictEqual(invMovement.debit, 1200.0);
+});
+
+// 21. Purchase Returns (إرجاع للمورد): Stock reduction, refund settlement, and audit logs
+runTest('21. Purchase Returns: Inventory reduction & financial settlement (Debt & Cash)', () => {
+    const admin = authService.login('ma', 'ma');
+    const supplier = db.get('SELECT * FROM suppliers LIMIT 1');
+    const product = db.get('SELECT * FROM products LIMIT 1');
+
+    const initialStock = product.current_stock;
+    const initialSup = db.get('SELECT balance FROM suppliers WHERE id = ?', [supplier.id]);
+    const initialSupBalance = initialSup ? initialSup.balance : 0;
+
+    // Create a purchase invoice with 10 units at cost 50 EGP each = 500 EGP total
+    // 200 paid cash, 300 remaining debt
+    const invoice = purchaseService.createPurchaseInvoice({
+        supplierId: supplier.id,
+        items: [{
+            productId: product.id,
+            quantity: 10,
+            unitCost: 50.0,
+            sellPrice: 100.0
+        }],
+        subtotal: 500.0,
+        discountAmount: 0.0,
+        shippingCost: 0.0,
+        taxAmount: 0.0,
+        paymentBreakdown: { cash: 200.0, credit: 300.0 },
+        payFromTreasury: false,
+        notes: 'فاتورة لاختبار الإرجاع'
+    }, admin.id);
+
+    const stockAfterInvoice = db.get('SELECT current_stock FROM products WHERE id = ?', [product.id]).current_stock;
+    assert.strictEqual(stockAfterInvoice, initialStock + 10, 'Stock must increase by 10 after invoice');
+
+    // Case 1: Partial return with debt_reduction (Return 2 units = 100 EGP)
+    const returnResult1 = purchaseService.createPurchaseReturn({
+        purchase_invoice_id: invoice.id,
+        supplier_id: supplier.id,
+        refund_method: 'debt_reduction',
+        reason: 'تالف أو به عيوب تصنيع',
+        notes: 'إرجاع قطعتين معيبتين',
+        items: [{
+            product_id: product.id,
+            quantity: 2,
+            unit_cost: 50.0
+        }]
+    }, admin.id);
+
+    assert.ok(returnResult1.return_number.startsWith('RET-'), 'Return number must have prefix RET-');
+    assert.strictEqual(returnResult1.total_returned_amount, 100.0);
+
+    // Verify stock reduced by 2
+    const stockAfterReturn1 = db.get('SELECT current_stock FROM products WHERE id = ?', [product.id]).current_stock;
+    assert.strictEqual(stockAfterReturn1, stockAfterInvoice - 2, 'Stock must decrease by 2 returned units');
+
+    // Verify invoice return_status and remaining_amount
+    const updatedInvoice1 = db.get('SELECT remaining_amount, return_status, returned_amount FROM purchase_invoices WHERE id = ?', [invoice.id]);
+    assert.strictEqual(updatedInvoice1.return_status, 'partial', 'Invoice return_status must be partial');
+    assert.strictEqual(updatedInvoice1.returned_amount, 100.0, 'Returned amount must be 100');
+    assert.strictEqual(updatedInvoice1.remaining_amount, 200.0, 'Remaining debt must reduce from 300 to 200');
+
+    // Case 2: Cash refund to treasury (Return 1 unit = 50 EGP)
+    const safeBeforeCashReturn = treasuryService.getBalance().balance;
+    const returnResult2 = purchaseService.createPurchaseReturn({
+        purchase_invoice_id: invoice.id,
+        supplier_id: supplier.id,
+        refund_method: 'cash_treasury',
+        reason: 'فائض مخزون',
+        notes: 'استرداد نقدي بالخزنة',
+        items: [{
+            product_id: product.id,
+            quantity: 1,
+            unit_cost: 50.0
+        }]
+    }, admin.id);
+
+    const safeAfterCashReturn = treasuryService.getBalance().balance;
+    assert.strictEqual(safeAfterCashReturn, safeBeforeCashReturn + 50.0, 'Central treasury balance must increase by 50 EGP');
+
+    // Case 3: Verify list returns by invoice
+    const returnsList = purchaseService.getPurchaseReturnsByInvoice(invoice.id);
+    assert.strictEqual(returnsList.length, 2, 'Must have 2 return records for this invoice');
+    assert.strictEqual(returnsList[0].items.length >= 1, true, 'Return record must contain item details');
+
+    // Case 5: Multi-Tender Return (Cash + Bank + Debt Reduction) with Central Treasury deposit
+    const safeBeforeMulti = treasuryService.getBalance().balance;
+    const debtBeforeMulti = db.get('SELECT remaining_amount FROM purchase_invoices WHERE id = ?', [invoice.id]).remaining_amount;
+
+    // Return 3 units at 50 EGP = 150 EGP total
+    // Split: 50 cash (treasury) + 50 bankTransfer + 50 debtReduction
+    const returnResultMulti = purchaseService.createPurchaseReturn({
+        purchase_invoice_id: invoice.id,
+        supplier_id: supplier.id,
+        refund_breakdown: {
+            cash: 50.0,
+            bankTransfer: 50.0,
+            eWallet: 0.0,
+            debtReduction: 50.0
+        },
+        reason: 'إرجاع متعدد الطرق',
+        notes: 'سند إرجاع مجزأ',
+        items: [{
+            product_id: product.id,
+            quantity: 3,
+            unit_cost: 50.0
+        }]
+    }, admin.id);
+
+    assert.strictEqual(returnResultMulti.refund_method, 'multi', 'Refund method should be multi');
+    assert.strictEqual(returnResultMulti.refund_breakdown.cash, 50.0);
+    assert.strictEqual(returnResultMulti.refund_breakdown.bankTransfer, 50.0);
+    assert.strictEqual(returnResultMulti.refund_breakdown.debtReduction, 50.0);
+
+    // Verify Central Treasury balance increased by 50 EGP cash
+    const safeAfterMulti = treasuryService.getBalance().balance;
+    assert.strictEqual(safeAfterMulti, safeBeforeMulti + 50.0, 'Central Treasury must increase by the cash portion (50 EGP)');
+
+    // Verify remaining invoice debt decreased by 50 EGP
+    const debtAfterMulti = db.get('SELECT remaining_amount FROM purchase_invoices WHERE id = ?', [invoice.id]).remaining_amount;
+    assert.strictEqual(debtAfterMulti, debtBeforeMulti - 50.0, 'Remaining invoice debt must decrease by the debt reduction portion (50 EGP)');
+
+    // Case 6: Guard against returning more than available stock or purchased quantity
+    assert.throws(() => {
+        purchaseService.createPurchaseReturn({
+            purchase_invoice_id: invoice.id,
+            refund_method: 'debt_reduction',
+            items: [{
+                product_id: product.id,
+                quantity: 99999,
+                unit_cost: 50.0
+            }]
+        }, admin.id);
+    }, /تتجاوز الكمية المتاحة للإرجاع/, 'Should prevent returning more than quantity purchased in invoice');
+});
+
 console.log('\n====================================================');
 console.log(`🎉 All ${passedTests}/${totalTests} tests PASSED successfully!`);
 console.log('====================================================');

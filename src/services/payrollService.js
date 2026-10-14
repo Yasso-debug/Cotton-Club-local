@@ -27,10 +27,51 @@ class PayrollService {
     }
 
     /**
+     * Get Staff KPIs
+     */
+    getStaffKpis() {
+        const stats = this.db.get(`
+            SELECT 
+                COUNT(*) as total_employees,
+                SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) as active_employees,
+                SUM(CASE WHEN is_active = 1 AND (job_title LIKE '%كاشير%' OR job_title LIKE '%مبيعات%' OR job_title LIKE '%صالة%') THEN 1 ELSE 0 END) as sales_cashier_count,
+                SUM(CASE WHEN is_active = 1 THEN basic_salary ELSE 0 END) as total_basic_payroll,
+                AVG(CASE WHEN is_active = 1 THEN basic_salary ELSE NULL END) as avg_basic_salary
+            FROM employees
+        `);
+
+        return {
+            totalEmployees: stats?.total_employees || 0,
+            activeEmployees: stats?.active_employees || 0,
+            salesCashierCount: stats?.sales_cashier_count || 0,
+            totalBasicPayroll: stats?.total_basic_payroll || 0,
+            avgBasicSalary: stats?.avg_basic_salary || 0
+        };
+    }
+
+    /**
+     * Toggle employee active status
+     */
+    toggleEmployeeStatus(id, userId) {
+        const emp = this.getEmployeeById(id);
+        if (!emp) throw new Error('الموظف غير موجود');
+
+        const newStatus = emp.is_active === 1 ? 0 : 1;
+        return this.updateEmployee(id, { isActive: newStatus }, userId);
+    }
+
+    /**
      * Create new employee profile
      */
     createEmployee(data, userId) {
-        const { fullName, jobTitle, phone, basicSalary, linkedUserId } = data;
+        const fullName = data.fullName || data.full_name;
+        const jobTitle = data.jobTitle || data.roleTitle || data.job_title;
+        const phone = data.phone;
+        const basicSalary = data.basicSalary !== undefined ? data.basicSalary : data.baseSalary;
+        const linkedUserId = data.linkedUserId !== undefined ? data.linkedUserId : data.user_id;
+        const hireDate = data.hireDate || data.hire_date;
+        const isActive = data.isActive !== undefined ? data.isActive : 1;
+
         if (!fullName || !fullName.trim()) {
             throw new Error('اسم الموظف مطلوب');
         }
@@ -45,14 +86,16 @@ class PayrollService {
 
         return this.db.transaction((db) => {
             const res = db.run(
-                `INSERT INTO employees (user_id, full_name, job_title, phone, basic_salary, is_active)
-                 VALUES (?, ?, ?, ?, ?, 1)`,
+                `INSERT INTO employees (user_id, full_name, job_title, phone, basic_salary, is_active, hire_date)
+                 VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, date('now', 'localtime')))`,
                 [
                     linkedUserId ? Number(linkedUserId) : null,
                     fullName.trim(),
                     jobTitle.trim(),
                     phone ? phone.trim() : null,
-                    salary
+                    salary,
+                    isActive ? 1 : 0,
+                    hireDate || null
                 ]
             );
 
@@ -60,7 +103,7 @@ class PayrollService {
             db.run(
                 `INSERT INTO audit_log (user_id, action, entity_type, entity_id, new_values)
                  VALUES (?, 'CREATE_EMPLOYEE', 'employees', ?, ?)`,
-                [userId, String(res.lastInsertRowid), JSON.stringify({ fullName, jobTitle, salary })]
+                [userId ? Number(userId) : null, String(res.lastInsertRowid), JSON.stringify({ fullName, jobTitle, salary })]
             );
 
             return this.getEmployeeById(res.lastInsertRowid);
@@ -71,7 +114,14 @@ class PayrollService {
      * Update employee profile
      */
     updateEmployee(id, data, userId) {
-        const { fullName, jobTitle, phone, basicSalary, linkedUserId, isActive } = data;
+        const fullName = data.fullName !== undefined ? data.fullName : data.full_name;
+        const jobTitle = data.jobTitle !== undefined ? data.jobTitle : data.roleTitle;
+        const phone = data.phone;
+        const basicSalary = data.basicSalary !== undefined ? data.basicSalary : data.baseSalary;
+        const linkedUserId = data.linkedUserId !== undefined ? data.linkedUserId : data.user_id;
+        const isActive = data.isActive !== undefined ? data.isActive : data.is_active;
+        const hireDate = data.hireDate !== undefined ? data.hireDate : data.hire_date;
+
         const current = this.getEmployeeById(id);
         if (!current) {
             throw new Error('الموظف غير موجود');
@@ -85,15 +135,17 @@ class PayrollService {
                      phone = COALESCE(?, phone),
                      basic_salary = COALESCE(?, basic_salary),
                      user_id = ?,
-                     is_active = COALESCE(?, is_active)
+                     is_active = COALESCE(?, is_active),
+                     hire_date = COALESCE(?, hire_date)
                  WHERE id = ?`,
                 [
                     fullName ? fullName.trim() : null,
                     jobTitle ? jobTitle.trim() : null,
-                    phone ? phone.trim() : null,
+                    phone !== undefined ? (phone ? phone.trim() : null) : current.phone,
                     basicSalary !== undefined ? Number(basicSalary) : null,
                     linkedUserId !== undefined ? (linkedUserId ? Number(linkedUserId) : null) : current.user_id,
                     isActive !== undefined ? Number(isActive) : null,
+                    hireDate || null,
                     id
                 ]
             );
@@ -102,10 +154,37 @@ class PayrollService {
             db.run(
                 `INSERT INTO audit_log (user_id, action, entity_type, entity_id, old_values, new_values)
                  VALUES (?, 'UPDATE_EMPLOYEE', 'employees', ?, ?, ?)`,
-                [userId, String(id), JSON.stringify(current), JSON.stringify(data)]
+                [userId ? Number(userId) : null, String(id), JSON.stringify(current), JSON.stringify(data)]
             );
 
             return this.getEmployeeById(id);
+        });
+    }
+
+    /**
+     * Delete employee profile safely
+     */
+    deleteEmployee(id, userId) {
+        const current = this.getEmployeeById(id);
+        if (!current) {
+            throw new Error('الموظف غير موجود');
+        }
+
+        const payments = this.db.get('SELECT COUNT(*) as count FROM salary_payments WHERE employee_id = ?', [id]);
+        if (payments && payments.count > 0) {
+            throw new Error('لا يمكن حذف هذا الموظف لوجود مسيرات رواتب وسندات صرف مسجلة باسمه في السجلات المالية. يمكنك إيقاف حسابه (متوقف عن العمل) بدلاً من الحذف.');
+        }
+
+        return this.db.transaction((db) => {
+            db.run('DELETE FROM employees WHERE id = ?', [id]);
+
+            db.run(
+                `INSERT INTO audit_log (user_id, action, entity_type, entity_id, old_values)
+                 VALUES (?, 'DELETE_EMPLOYEE', 'employees', ?, ?)`,
+                [userId ? Number(userId) : null, String(id), JSON.stringify(current)]
+            );
+
+            return true;
         });
     }
 

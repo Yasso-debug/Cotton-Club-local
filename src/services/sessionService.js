@@ -78,7 +78,8 @@ class SessionService {
                 COALESCE(SUM(discount_amount), 0) as total_discounts,
                 COALESCE(SUM(total_cost), 0) as total_cost,
                 COALESCE(SUM(CASE WHEN payment_method = 'cash' THEN final_total ELSE 0 END), 0) as direct_cash_sales,
-                COALESCE(SUM(CASE WHEN payment_method = 'card' THEN final_total ELSE 0 END), 0) as direct_card_sales
+                COALESCE(SUM(CASE WHEN payment_method = 'card' THEN final_total ELSE 0 END), 0) as direct_card_sales,
+                COALESCE(SUM(CASE WHEN payment_method = 'split' THEN final_total ELSE 0 END), 0) as split_sales
              FROM sales_invoices
              WHERE session_id = ? AND status = 'completed'`,
             [sessionId]
@@ -132,8 +133,13 @@ class SessionService {
             totalDiscounts: salesStats?.total_discounts || 0,
             totalCost: salesStats?.total_cost || 0,
             netProfit,
+            directCashSales: salesStats?.direct_cash_sales || 0,
+            directCardSales: salesStats?.direct_card_sales || 0,
+            splitSales: salesStats?.split_sales || 0,
             totalCashSales,
             totalCardSales,
+            splitCash: splitCash?.split_cash || 0,
+            splitCard: splitCard?.split_card || 0,
             totalExpenses: expenses?.total_expenses || 0,
             expenseCount: expenses?.expense_count || 0,
             totalSupplierPayments: supplierPayments?.total_supplier_payments || 0,

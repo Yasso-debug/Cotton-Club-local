@@ -36,7 +36,7 @@ function initAppServices() {
         session: new SessionService(db),
         pos: new PosService(db),
         inventory: new InventoryService(db),
-        purchases: new PurchaseService(db),
+        purchases: new PurchaseService(db, treasuryService),
         expenses: new ExpenseService(db),
         reports: new ReportService(db),
         printer: new PrinterService(db),
@@ -63,6 +63,12 @@ function registerIpcHandlers() {
     handle('auth:login', ({ username, password }) => services.auth.login(username, password));
     handle('auth:verify-manager', ({ username, password }) => services.auth.verifyManagerOverride(username, password));
     handle('auth:list-users', () => services.auth.listUsers());
+    handle('auth:create-user', ({ data, userId }) => services.auth.createUser(data, userId));
+    handle('auth:update-user', ({ id, data, userId }) => services.auth.updateUser(id, data, userId));
+    handle('auth:change-password', ({ id, password, userId }) => services.auth.changePassword(id, password, userId));
+    handle('auth:toggle-status', ({ id, userId }) => services.auth.toggleUserStatus(id, userId));
+    handle('auth:delete-user', ({ id, userId }) => services.auth.deleteUser(id, userId));
+    handle('auth:users-kpis', () => services.auth.getUsersKpis());
 
     // Session
     handle('session:get-active', () => services.session.getActiveSession());
@@ -78,22 +84,40 @@ function registerIpcHandlers() {
     handle('pos:get-invoice', ({ id }) => services.pos.getInvoiceById(id));
     handle('pos:void-invoice', ({ invoiceId, managerUserId, reason }) => services.pos.voidInvoice(invoiceId, managerUserId, reason));
     handle('pos:list-recent', ({ limit }) => services.pos.listRecentInvoices(limit));
+    handle('pos:invoices-dashboard', (filters) => services.pos.getInvoicesLogDashboard(filters));
 
     // Inventory
+    handle('inventory:overview', () => services.inventory.getCatalogOverview());
     handle('inventory:list-products', (filters) => services.inventory.listProducts(filters));
     handle('inventory:create-product', ({ data, userId }) => services.inventory.createProduct(data, userId));
     handle('inventory:update-product', ({ id, data, userId }) => services.inventory.updateProduct(id, data, userId));
+    handle('inventory:delete-product', ({ id, userId }) => services.inventory.deleteProduct(id, userId));
     handle('inventory:adjust-stock', ({ data, userId, sessionId }) => services.inventory.adjustStock(data, userId, sessionId));
     handle('inventory:valuation', () => services.inventory.getInventoryValuation());
-    handle('inventory:list-categories', () => services.inventory.listCategories());
-    handle('inventory:create-category', ({ name, desc }) => services.inventory.createCategory(name, desc));
+    handle('inventory:list-categories', (filters) => services.inventory.listCategories(filters));
+    handle('inventory:create-category', (params) => services.inventory.createCategory(params.data || params));
+    handle('inventory:update-category', ({ id, data }) => services.inventory.updateCategory(id, data));
+    handle('inventory:delete-category', ({ id }) => services.inventory.deleteCategory(id));
 
-    // Purchases
-    handle('purchases:list-suppliers', () => services.purchases.listSuppliers());
-    handle('purchases:create-supplier', (data) => services.purchases.createSupplier(data));
+    // Purchases & Suppliers Dual-View
+    handle('purchases:get-suppliers-overview', () => services.purchases.getSuppliersOverview());
+    handle('purchases:list-suppliers', (filters) => services.purchases.listSuppliers(filters));
+    handle('purchases:create-supplier', ({ data, userId }) => services.purchases.createSupplier(data, userId));
+    handle('purchases:update-supplier', ({ id, data, userId }) => services.purchases.updateSupplier(id, data, userId));
+    handle('purchases:get-supplier-ledger', ({ supplierId, filters }) => services.purchases.getSupplierLedger(supplierId, filters));
+    handle('purchases:record-split-payment', ({ data, userId }) => services.purchases.recordSupplierSplitPayment(data, userId));
     handle('purchases:create-invoice', ({ data, userId }) => services.purchases.createPurchaseInvoice(data, userId));
+    handle('purchases:get-invoice', (params) => {
+        const id = (params && typeof params === 'object') ? (params.id || params.invoiceId) : params;
+        return services.purchases.getPurchaseInvoiceById(id);
+    });
     handle('purchases:record-payment', ({ data, userId }) => services.purchases.recordSupplierPayment(data, userId));
     handle('purchases:list-invoices', ({ limit }) => services.purchases.listPurchaseInvoices(limit));
+    handle('purchases:create-return', ({ data, userId }) => services.purchases.createPurchaseReturn(data, userId));
+    handle('purchases:list-returns', (params) => {
+        const id = (params && typeof params === 'object') ? (params.invoiceId || params.id) : params;
+        return services.purchases.getPurchaseReturnsByInvoice(id);
+    });
 
     // Expenses
     handle('expenses:add', ({ data, userId }) => services.expenses.addExpense(data, userId));
@@ -105,6 +129,7 @@ function registerIpcHandlers() {
     handle('reports:top-selling', ({ limit, startDate, endDate }) => services.reports.getTopSellingProducts(limit, startDate, endDate));
     handle('reports:category-sales', ({ startDate, endDate }) => services.reports.getCategorySales(startDate, endDate));
     handle('reports:dashboard-overview', () => services.reports.getDashboardOverview());
+    handle('reports:comprehensive-analytics', (filters) => services.reports.getComprehensiveAnalytics(filters));
 
     // Printing
     handle('printer:preview-invoice', ({ invoiceId }) => {
@@ -137,8 +162,11 @@ function registerIpcHandlers() {
 
     // Payroll & Staff
     handle('payroll:list-employees', ({ onlyActive }) => services.payroll.listEmployees(onlyActive));
+    handle('payroll:staff-kpis', () => services.payroll.getStaffKpis());
+    handle('payroll:toggle-employee-status', ({ id, userId }) => services.payroll.toggleEmployeeStatus(id, userId));
     handle('payroll:create-employee', ({ data, userId }) => services.payroll.createEmployee(data, userId));
     handle('payroll:update-employee', ({ id, data, userId }) => services.payroll.updateEmployee(id, data, userId));
+    handle('payroll:delete-employee', ({ id, userId }) => services.payroll.deleteEmployee(id, userId));
     handle('payroll:disburse-salary', ({ data, userId }) => services.payroll.disburseSalary(data, userId));
     handle('payroll:list-payments', ({ limit }) => services.payroll.listSalaryPayments(limit));
     handle('inventory:list-adjustments', ({ limit }) => services.inventory.listStockAdjustments(limit));
@@ -196,6 +224,8 @@ function createWindow() {
             sandbox: false
         }
     });
+
+    mainWindow.setMenu(null);
 
     mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
 

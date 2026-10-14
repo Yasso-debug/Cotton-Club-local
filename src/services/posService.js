@@ -348,6 +348,191 @@ class PosService {
             [limit]
         );
     }
+
+    /**
+     * Get Invoices Log Dashboard with Executive KPIs, Payment Breakdown, and Filtered Invoices List
+     */
+    getInvoicesLogDashboard(filters = {}) {
+        const { startDate, endDate, paymentMethod, cashierId, searchQuery, limit = 100 } = filters;
+
+        // Build base WHERE clauses for invoices (honors all filters: dates, paymentMethod, cashierId, searchQuery)
+        let invWhere = 'WHERE 1=1';
+        const invParams = [];
+
+        // Base date WHERE clauses (for period-level summary & breakdown)
+        let dateWhere = 'WHERE 1=1';
+        const dateParams = [];
+
+        let expWhere = 'WHERE 1=1';
+        const expParams = [];
+
+        if (startDate && endDate) {
+            invWhere += ' AND date(si.created_at) >= date(?) AND date(si.created_at) <= date(?)';
+            invParams.push(startDate, endDate);
+
+            dateWhere += ' AND date(si.created_at) >= date(?) AND date(si.created_at) <= date(?)';
+            dateParams.push(startDate, endDate);
+
+            expWhere += ' AND date(created_at) >= date(?) AND date(created_at) <= date(?)';
+            expParams.push(startDate, endDate);
+        } else if (startDate) {
+            invWhere += ' AND date(si.created_at) >= date(?)';
+            invParams.push(startDate);
+
+            dateWhere += ' AND date(si.created_at) >= date(?)';
+            dateParams.push(startDate);
+
+            expWhere += ' AND date(created_at) >= date(?)';
+            expParams.push(startDate);
+        } else if (endDate) {
+            invWhere += ' AND date(si.created_at) <= date(?)';
+            invParams.push(endDate);
+
+            dateWhere += ' AND date(si.created_at) <= date(?)';
+            dateParams.push(endDate);
+
+            expWhere += ' AND date(created_at) <= date(?)';
+            expParams.push(endDate);
+        }
+
+        if (paymentMethod && paymentMethod !== 'all') {
+            invWhere += ' AND si.payment_method = ?';
+            invParams.push(paymentMethod);
+        }
+
+        if (cashierId) {
+            invWhere += ' AND si.user_id = ?';
+            invParams.push(cashierId);
+        }
+
+        if (searchQuery && searchQuery.trim()) {
+            invWhere += ' AND (si.invoice_number LIKE ? OR si.notes LIKE ?)';
+            const q = `%${searchQuery.trim()}%`;
+            invParams.push(q, q);
+        }
+
+        // 1. Sales stats matching active filters
+        const salesStats = this.db.get(
+            `SELECT 
+                COUNT(*) as total_invoices,
+                COALESCE(SUM(si.final_total), 0) as total_sales
+             FROM sales_invoices si
+             ${invWhere} AND si.status = 'completed'`,
+            invParams
+        );
+
+        // 2. Pieces stats matching active filters
+        const piecesStats = this.db.get(
+            `SELECT COALESCE(SUM(sli.quantity), 0) as total_pieces
+             FROM sale_line_items sli
+             JOIN sales_invoices si ON sli.invoice_id = si.id
+             ${invWhere} AND si.status = 'completed'`,
+            invParams
+        );
+
+        // 3. Expenses stats in date period
+        const expenseStats = this.db.get(
+            `SELECT 
+                COALESCE(SUM(amount), 0) as total_expenses,
+                COUNT(*) as expense_count
+             FROM petty_expenses
+             ${expWhere}`,
+            expParams
+        );
+
+        // 4. Payment breakdown for date period
+        const breakdownRows = this.db.all(
+            `SELECT 
+                si.payment_method,
+                COUNT(*) as count,
+                COALESCE(SUM(si.final_total), 0) as total
+             FROM sales_invoices si
+             ${dateWhere} AND si.status = 'completed'
+             GROUP BY si.payment_method`,
+            dateParams
+        );
+
+        const breakdownMap = { cash: { total: 0, count: 0 }, card: { total: 0, count: 0 }, split: { total: 0, count: 0 } };
+        (breakdownRows || []).forEach(r => {
+            if (breakdownMap[r.payment_method]) {
+                breakdownMap[r.payment_method] = { total: r.total || 0, count: r.count || 0 };
+            }
+        });
+
+        const totalSales = salesStats?.total_sales || 0;
+        const totalExpenses = expenseStats?.total_expenses || 0;
+        const netRemaining = Math.max(0, totalSales - totalExpenses);
+        const totalInvoices = salesStats?.total_invoices || 0;
+        const totalPieces = piecesStats?.total_pieces || 0;
+
+        const cashTotal = breakdownMap.cash.total;
+        const cardTotal = breakdownMap.card.total;
+        const splitTotal = breakdownMap.split.total;
+        const allTendersSum = cashTotal + cardTotal + splitTotal;
+
+        const cashPercent = allTendersSum > 0 ? Math.round((cashTotal / allTendersSum) * 100) : 0;
+        const cardPercent = allTendersSum > 0 ? Math.round((cardTotal / allTendersSum) * 100) : 0;
+        const splitPercent = allTendersSum > 0 ? Math.max(0, 100 - cashPercent - cardPercent) : 0;
+
+        // 5. Invoices List with active filters
+        const listParams = [...invParams, limit];
+        const invoices = this.db.all(
+            `SELECT 
+                si.id,
+                si.invoice_number,
+                si.created_at,
+                si.final_total,
+                si.subtotal,
+                si.discount_amount,
+                si.payment_method,
+                si.status,
+                si.notes,
+                u.display_name as cashier_name,
+                ds.session_code,
+                COALESCE(items_stat.items_count, 0) as items_count,
+                COALESCE(items_stat.total_pieces, 0) as total_pieces
+             FROM sales_invoices si
+             JOIN users u ON si.user_id = u.id
+             LEFT JOIN daily_sessions ds ON si.session_id = ds.id
+             LEFT JOIN (
+                 SELECT invoice_id, COUNT(*) as items_count, SUM(quantity) as total_pieces
+                 FROM sale_line_items
+                 GROUP BY invoice_id
+             ) items_stat ON items_stat.invoice_id = si.id
+             ${invWhere}
+             ORDER BY si.id DESC LIMIT ?`,
+            listParams
+        );
+
+        return {
+            summary: {
+                totalSales,
+                totalExpenses,
+                netRemaining,
+                totalInvoices,
+                totalPieces,
+                expenseCount: expenseStats?.expense_count || 0
+            },
+            breakdown: {
+                cash: {
+                    total: cashTotal,
+                    count: breakdownMap.cash.count,
+                    percent: cashPercent
+                },
+                card: {
+                    total: cardTotal,
+                    count: breakdownMap.card.count,
+                    percent: cardPercent
+                },
+                split: {
+                    total: splitTotal,
+                    count: breakdownMap.split.count,
+                    percent: splitPercent
+                }
+            },
+            invoices: invoices || []
+        };
+    }
 }
 
 module.exports = { PosService };

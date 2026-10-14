@@ -33,7 +33,7 @@ const services = {
     session: new SessionService(db),
     pos: new PosService(db),
     inventory: new InventoryService(db),
-    purchases: new PurchaseService(db),
+    purchases: new PurchaseService(db, treasuryService),
     expenses: new ExpenseService(db),
     reports: new ReportService(db),
     printer: new PrinterService(db),
@@ -47,6 +47,12 @@ const rpcHandlers = {
     'auth/login': ({ username, password }) => services.auth.login(username, password),
     'auth/verify-manager': ({ username, password }) => services.auth.verifyManagerOverride(username, password),
     'auth/list-users': () => services.auth.listUsers(),
+    'auth/create-user': ({ data, userId }) => services.auth.createUser(data, userId),
+    'auth/update-user': ({ id, data, userId }) => services.auth.updateUser(id, data, userId),
+    'auth/change-password': ({ id, password, userId }) => services.auth.changePassword(id, password, userId),
+    'auth/toggle-status': ({ id, userId }) => services.auth.toggleUserStatus(id, userId),
+    'auth/delete-user': ({ id, userId }) => services.auth.deleteUser(id, userId),
+    'auth/users-kpis': () => services.auth.getUsersKpis(),
     'session/get-active': () => services.session.getActiveSession(),
     'session/open': ({ userId, openingCash, notes }) => services.session.openSession(userId, openingCash, notes),
     'session/get-summary': ({ sessionId }) => services.session.getSessionSummary(sessionId),
@@ -58,19 +64,41 @@ const rpcHandlers = {
     'pos/get-invoice': ({ id }) => services.pos.getInvoiceById(id),
     'pos/void-invoice': ({ invoiceId, managerUserId, reason }) => services.pos.voidInvoice(invoiceId, managerUserId, reason),
     'pos/list-recent': ({ limit }) => services.pos.listRecentInvoices(limit),
-    'inventory/list-products': (filters) => services.inventory.listProducts(filters),
+    'pos/invoices-dashboard': (filters) => services.pos.getInvoicesLogDashboard(filters || {}),
+    'inventory/overview': () => services.inventory.getCatalogOverview(),
+    'inventory/list-products': (filters) => services.inventory.listProducts(filters || {}),
     'inventory/create-product': ({ data, userId }) => services.inventory.createProduct(data, userId),
     'inventory/update-product': ({ id, data, userId }) => services.inventory.updateProduct(id, data, userId),
+    'inventory/delete-product': ({ id, userId }) => services.inventory.deleteProduct(id, userId),
     'inventory/adjust-stock': ({ data, userId, sessionId }) => services.inventory.adjustStock(data, userId, sessionId),
     'inventory/list-adjustments': ({ limit }) => services.inventory.listStockAdjustments(limit),
     'inventory/valuation': () => services.inventory.getInventoryValuation(),
-    'inventory/list-categories': () => services.inventory.listCategories(),
-    'inventory/create-category': ({ name, desc }) => services.inventory.createCategory(name, desc),
-    'purchases/list-suppliers': () => services.purchases.listSuppliers(),
-    'purchases/create-supplier': (data) => services.purchases.createSupplier(data),
+    'inventory/list-categories': (filters) => services.inventory.listCategories(filters || {}),
+    'inventory/create-category': (params) => services.inventory.createCategory(params.data || params),
+    'inventory/update-category': ({ id, data }) => services.inventory.updateCategory(id, data),
+    'inventory/delete-category': ({ id }) => services.inventory.deleteCategory(id),
+    'purchases/overview': () => services.purchases.getSuppliersOverview(),
+    'purchases/get-suppliers-overview': () => services.purchases.getSuppliersOverview(),
+    'purchases/list-suppliers': (params) => services.purchases.listSuppliers(params || {}),
+    'purchases/create-supplier': (params) => services.purchases.createSupplier(params.data || params, params.userId),
+    'purchases/update-supplier': ({ id, data, userId }) => services.purchases.updateSupplier(id, data, userId),
+    'purchases/get-supplier-ledger': ({ supplierId, filters }) => services.purchases.getSupplierLedger(supplierId, filters),
+    'purchases/record-split-payment': ({ data, userId }) => services.purchases.recordSupplierSplitPayment(data, userId),
     'purchases/create-invoice': ({ data, userId }) => services.purchases.createPurchaseInvoice(data, userId),
+    'purchases/get-invoice': (params) => {
+        const id = (params && typeof params === 'object') ? (params.id || params.invoiceId) : params;
+        return services.purchases.getPurchaseInvoiceById(id);
+    },
     'purchases/record-payment': ({ data, userId }) => services.purchases.recordSupplierPayment(data, userId),
     'purchases/list-invoices': ({ limit }) => services.purchases.listPurchaseInvoices(limit),
+    'purchases/create-return': (params) => {
+        const data = params.data || params;
+        return services.purchases.createPurchaseReturn(data, params.userId || data.userId);
+    },
+    'purchases/list-returns': (params) => {
+        const id = (params && typeof params === 'object') ? (params.invoiceId || params.id) : params;
+        return services.purchases.getPurchaseReturnsByInvoice(id);
+    },
     'expenses/add': ({ data, userId }) => services.expenses.addExpense(data, userId),
     'expenses/list-session': ({ sessionId }) => services.expenses.listSessionExpenses(sessionId),
     'expenses/list-all': ({ limit }) => services.expenses.listAllExpenses(limit),
@@ -94,11 +122,14 @@ const rpcHandlers = {
     },
     'treasury/list-transactions': ({ limit }) => services.treasury.listTransactions(limit),
     'payroll/list-employees': (params) => services.payroll.listEmployees(params?.onlyActive ?? params?.activeOnly),
+    'payroll/staff-kpis': () => services.payroll.getStaffKpis(),
+    'payroll/toggle-employee-status': ({ id, userId }) => services.payroll.toggleEmployeeStatus(id, userId),
     'payroll/create-employee': (params) => {
         const d = params.data || params;
         return services.payroll.createEmployee(d, params.userId || d.userId);
     },
     'payroll/update-employee': ({ id, data, userId }) => services.payroll.updateEmployee(id, data, userId),
+    'payroll/delete-employee': ({ id, userId }) => services.payroll.deleteEmployee(id, userId),
     'payroll/disburse-salary': (params) => {
         const d = params.data || params;
         return services.payroll.disburseSalary(d, params.userId || d.userId);
@@ -133,18 +164,11 @@ const mimeTypes = {
     '.svg': 'image/svg+xml'
 };
 
-const staticCache = new Map();
-
 function getCachedFile(filePath) {
-    if (staticCache.has(filePath)) {
-        return staticCache.get(filePath);
-    }
     if (!fs.existsSync(filePath)) {
         return null;
     }
-    const content = fs.readFileSync(filePath);
-    staticCache.set(filePath, content);
-    return content;
+    return fs.readFileSync(filePath);
 }
 
 const server = http.createServer((req, res) => {
@@ -191,11 +215,7 @@ const server = http.createServer((req, res) => {
         return res.end('404 Not Found');
     }
 
-    if (ext === '.html') {
-        res.setHeader('Cache-Control', 'no-cache');
-    } else {
-        res.setHeader('Cache-Control', 'public, max-age=3600');
-    }
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
 
     res.statusCode = 200;
     res.setHeader('Content-Type', contentType);
@@ -204,4 +224,11 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, '127.0.0.1', () => {
     console.log(`Cotton Club POS Server running at http://127.0.0.1:${PORT}`);
+});
+
+process.on('uncaughtException', (err) => {
+    console.error('Uncaught Exception:', err);
+});
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
