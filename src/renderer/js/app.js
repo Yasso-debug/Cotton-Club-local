@@ -282,8 +282,7 @@ async function handleLogin() {
 
 document.getElementById('btnLogout').addEventListener('click', () => {
     state.currentUser = null;
-    state.cart = [];
-    renderCart();
+    clearCart();
 
     const headerRoleBadge = document.getElementById('headerRoleBadge');
     const headerBtnUsers = document.getElementById('headerBtnUsers');
