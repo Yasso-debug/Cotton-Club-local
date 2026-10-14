@@ -32,6 +32,9 @@ if (!window.api) {
         listSessions: (filters) => rpc('session/list', typeof filters === 'number' ? { limit: filters } : (filters || {})),
         searchProducts: (query, limit) => rpc('pos/search-products', { query, limit }),
         findProductByBarcode: (barcode) => rpc('pos/find-barcode', { barcode }),
+        searchCustomers: (query, limit) => rpc('pos/search-customers', { query, limit }),
+        quickCreateCustomer: (data) => rpc('pos/quick-create-customer', data),
+        getDrawerCash: (sessionId) => rpc('pos/get-drawer-cash', { sessionId }),
         checkout: (saleData) => rpc('pos/checkout', saleData),
         getInvoice: (id) => rpc('pos/get-invoice', { id }),
         voidInvoice: (invoiceId, managerUserId, reason) => rpc('pos/void-invoice', { invoiceId, managerUserId, reason }),
@@ -95,11 +98,16 @@ if (!window.api) {
 const state = {
     currentUser: null,
     activeSession: null,
+    posMode: 'sale', // 'sale' | 'return'
+    posRows: [],
+    selectedCustomer: null,
     cart: [],
     discountPercent: 0,
     managerOverride: null,
     selectedPaymentMethod: 'cash',
     currentInvoiceId: null,
+    drawerCash: 0,
+    activeLookupCategoryId: 'all',
     settings: {}
 };
 
@@ -791,8 +799,16 @@ function switchView(viewName, subTab = null) {
     if (viewName === 'hub') {
         renderRoleHub();
     } else if (viewName === 'pos') {
-        document.getElementById('posBarcodeInput').focus();
-        loadPosProducts();
+        refreshSessionState();
+        if (state.posRows.length === 0) {
+            addBlankPosRow();
+        } else {
+            const firstRowBlank = state.posRows.find(r => !r.product);
+            if (firstRowBlank) {
+                document.getElementById(`posBarcode_${firstRowBlank.id}`)?.focus();
+            }
+        }
+        updatePosTotals();
     } else if (viewName === 'sales-analytics') {
         loadSalesAnalyticsDashboard();
     } else if (viewName === 'sales-settings') {
@@ -915,7 +931,7 @@ function bindKeyboardShortcuts() {
             }
 
             if (isPosActive) {
-                document.getElementById('posBarcodeInput')?.focus();
+                openCategoryProductLookup();
                 return;
             }
         }
@@ -936,32 +952,34 @@ function bindKeyboardShortcuts() {
             return;
         }
 
-        // Only handle POS shortcuts when POS view is active
+        // Strict Keyboard Workflow for POS View
         const isPosActive = document.getElementById('view-pos')?.classList.contains('active');
-        if (!isPosActive) {
-            return;
-        }
-
-        // F4: Discount Modal (in POS only)
-        if (e.key === 'F4') {
-            if (state.cart.length > 0) {
+        if (isPosActive) {
+            if (e.key === 'F11' || e.code === 'F11') {
                 e.preventDefault();
-                openDiscountModal();
+                addBlankPosRow();
+                return;
             }
-        }
-
-        // F10: Finalize Sale (in POS only)
-        if (e.key === 'F10') {
-            if (state.cart.length > 0) {
+            if (e.key === 'F1' || e.code === 'F1') {
                 e.preventDefault();
-                finalizeSale();
+                openCategoryProductLookup();
+                return;
             }
-        }
-
-        // F12: Clear Cart (in POS only)
-        if (e.key === 'F12') {
-            e.preventDefault();
-            clearCart();
+            if (e.key === 'F2' || e.code === 'F2') {
+                e.preventDefault();
+                setPosMode(state.posMode === 'sale' ? 'return' : 'sale');
+                return;
+            }
+            if (e.key === 'F4' || e.code === 'F4') {
+                e.preventDefault();
+                executePosCheckout();
+                return;
+            }
+            if (e.key === 'F12' || e.code === 'F12') {
+                e.preventDefault();
+                clearCart();
+                return;
+            }
         }
     });
 }
@@ -981,290 +999,964 @@ function setPaymentMethod(method) {
 }
 
 /* -------------------------------------------------------------
- * 3. POS & CART LOGIC
+ * 3. MASTER POS & SALES ARCHITECTURE (STRICT KEYBOARD & MULTI-TENDER)
  * ------------------------------------------------------------- */
+let posRowCounter = 0;
+let posCustomerDebounceTimer = null;
+let posLookupAllProducts = [];
+
 function bindPosEvents() {
-    const barcodeInput = document.getElementById('posBarcodeInput');
+    // 1. Initial blank row
+    if (state.posRows.length === 0) {
+        addBlankPosRow();
+    }
 
-    // Barcode enter / search
-    barcodeInput.addEventListener('keydown', async (e) => {
-        if (e.key === 'Enter') {
-            const query = barcodeInput.value.trim();
-            if (!query) return;
+    // 2. Discount inputs sync
+    const discountPercentInput = document.getElementById('posDiscountPercent');
+    const discountAmountInput = document.getElementById('posDiscountAmount');
 
-            // Direct barcode match
-            const res = await window.api.findProductByBarcode(query);
-            if (res.success && res.data) {
-                addToCart(res.data);
-                barcodeInput.value = '';
+    if (discountPercentInput && discountAmountInput) {
+        discountPercentInput.addEventListener('input', () => {
+            let percent = Number(discountPercentInput.value) || 0;
+            if (percent < 0) percent = 0;
+            if (percent > 100) percent = 100;
+            discountPercentInput.value = percent;
+            state.discountPercent = percent;
+
+            // Cashier ceiling check
+            const maxCashierDiscount = Number(state.settings?.cashier_max_discount_percent || 5);
+            const warningEl = document.getElementById('posCashierCeilingWarning');
+            if (state.currentUser?.role === 'cashier' && percent > maxCashierDiscount) {
+                if (warningEl) warningEl.style.display = 'flex';
             } else {
-                // If not exact barcode, filter table
-                await loadPosProducts(query);
+                if (warningEl) warningEl.style.display = 'none';
+                state.managerOverride = null;
             }
-        }
-    });
 
-    // Clear cart button
-    document.getElementById('btnClearCart').addEventListener('click', clearCart);
+            updatePosTotals();
+        });
 
-    // Discount modal trigger
-    document.getElementById('btnOpenDiscountModal').addEventListener('click', openDiscountModal);
-
-    // Payment methods buttons
-    document.querySelectorAll('.btn-payment-method').forEach(btn => {
-        btn.addEventListener('click', () => setPaymentMethod(btn.dataset.method));
-    });
-
-    // Checkout button
-    document.getElementById('btnFinalizeSale').addEventListener('click', finalizeSale);
-}
-
-async function loadPosProducts(searchQuery = '') {
-    const res = await window.api.searchProducts(searchQuery, 30);
-    const tbody = document.getElementById('posProductsTableBody');
-    tbody.innerHTML = '';
-
-    if (!res.success || !res.data || res.data.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 20px;">لا توجد أصناف مطابقة</td></tr>';
-        return;
-    }
-
-    res.data.forEach(prod => {
-        posProductsCache.set(prod.id, prod);
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td style="font-family: monospace; font-weight: bold;">${prod.barcode}</td>
-            <td style="font-weight: 600;">${prod.item_name}</td>
-            <td style="color: var(--text-secondary);">${prod.category_name || '-'}</td>
-            <td style="color: var(--accent-emerald); font-weight: bold;">${prod.sell_price.toFixed(2)} ج.م</td>
-            <td>
-                <span class="badge ${prod.current_stock <= prod.min_stock_alert ? 'badge-low-stock' : 'badge-ok'}">
-                    ${prod.current_stock}
-                </span>
-            </td>
-            <td style="text-align: center;">
-                <button class="btn-primary" style="padding: 4px 10px; font-size: 12px; display: inline-flex; align-items: center; gap: 4px;" onclick="addProdById(${prod.id})">
-                    <i data-lucide="plus" class="icon-xs"></i>
-                    <span>إضافة</span>
-                </button>
-            </td>
-        `;
-        tbody.appendChild(tr);
-    });
-    refreshIcons(tbody);
-}
-
-// Window function for instantaneous table add (0ms network delay)
-window.addProdById = async function(id) {
-    let product = posProductsCache.get(id);
-    if (!product) {
-        const res = await window.api.listProducts({ search: String(id), limit: 1 });
-        product = res.data?.find(p => p.id === id);
-    }
-    if (product) addToCart(product);
-};
-
-function addToCart(product) {
-    if (!state.activeSession) {
-        alert('تنبيه: يجب فتح وردية يومية أولاً لإتمام عمليات البيع!');
-        switchView('session');
-        return;
-    }
-
-    const existing = state.cart.find(item => item.productId === product.id);
-    if (existing) {
-        existing.quantity += 1;
-    } else {
-        state.cart.push({
-            productId: product.id,
-            barcode: product.barcode,
-            itemName: product.item_name,
-            sellPrice: product.sell_price,
-            quantity: 1
+        discountAmountInput.addEventListener('input', () => {
+            const subtotal = getPosSubtotal();
+            const amount = Number(discountAmountInput.value) || 0;
+            if (subtotal > 0) {
+                const percent = Math.min(100, Math.max(0, Math.round((amount / subtotal) * 100)));
+                discountPercentInput.value = percent;
+                state.discountPercent = percent;
+            }
+            updatePosTotals();
         });
     }
 
-    renderCart();
-}
-
-function renderCart() {
-    const container = document.getElementById('cartItemsContainer');
-    container.innerHTML = '';
-
-    if (state.cart.length === 0) {
-        container.innerHTML = '<div style="color: var(--text-muted); text-align: center; margin-top: 40px; font-size: 13px;">السلة فارغة، قم بمسح باركود لإضافة الأصناف</div>';
-        updateCartTotals(0, 0, 0);
-        return;
-    }
-
-    let subtotal = 0;
-
-    state.cart.forEach((item, index) => {
-        const lineTotal = item.quantity * item.sellPrice;
-        subtotal += lineTotal;
-
-        const card = document.createElement('div');
-        card.className = 'cart-item-card';
-        card.innerHTML = `
-            <div style="flex: 1;">
-                <div class="cart-item-title">${item.itemName}</div>
-                <div class="cart-item-meta">${item.sellPrice.toFixed(2)} ج.م × ${item.quantity} = <strong style="color: var(--accent-emerald);">${lineTotal.toFixed(2)} ج.م</strong></div>
-            </div>
-            <div style="display: flex; align-items: center; gap: 6px;">
-                <button class="btn-qty" onclick="changeQty(${index}, -1)" title="تقليل الكمية">
-                    <i data-lucide="minus"></i>
-                </button>
-                <span style="font-weight: bold; width: 22px; text-align: center;">${item.quantity}</span>
-                <button class="btn-qty" onclick="changeQty(${index}, 1)" title="زيادة الكمية">
-                    <i data-lucide="plus"></i>
-                </button>
-                <button class="btn-del" onclick="removeCartItem(${index})" title="حذف الصنف">
-                    <i data-lucide="trash-2"></i>
-                </button>
-            </div>
-        `;
-        container.appendChild(card);
+    // 3. Multi-tender inputs sync
+    ['posTenderCash', 'posTenderCard', 'posTenderTransfer'].forEach(id => {
+        const input = document.getElementById(id);
+        if (input) {
+            input.addEventListener('input', () => {
+                document.querySelectorAll('.btn-quick-fill').forEach(b => b.classList.remove('active'));
+                updatePosTotals();
+            });
+        }
     });
-    refreshIcons(container);
 
-    const discountAmount = Math.round((subtotal * (state.discountPercent / 100)) * 100) / 100;
-    const finalTotal = Math.max(0, subtotal - discountAmount);
+    // 4. Customer fast lookup input
+    const customerInput = document.getElementById('posCustomerInput');
+    const customerDropdown = document.getElementById('posCustomerDropdown');
 
-    updateCartTotals(subtotal, discountAmount, finalTotal);
-}
+    if (customerInput && customerDropdown) {
+        customerInput.addEventListener('input', () => {
+            const query = customerInput.value.trim();
+            clearTimeout(posCustomerDebounceTimer);
+            if (!query) {
+                customerDropdown.style.display = 'none';
+                return;
+            }
+            posCustomerDebounceTimer = setTimeout(async () => {
+                const res = await window.api.searchCustomers(query, 8);
+                if (res.success && res.data && res.data.length > 0) {
+                    customerDropdown.innerHTML = res.data.map(c => `
+                        <div class="pos-customer-dropdown-item" onclick="selectPosCustomer(${c.id}, '${escapeHtml(c.name)}', '${c.phone || ''}', ${c.points || 0})">
+                            <div>
+                                <div class="cust-name">${c.name}</div>
+                                <div class="cust-phone">${c.phone || 'بدون هاتف'}</div>
+                            </div>
+                            <div class="cust-pts">${c.points || 0} نقطة</div>
+                        </div>
+                    `).join('');
+                    customerDropdown.style.display = 'block';
+                } else {
+                    customerDropdown.innerHTML = `
+                        <div style="padding: 10px 14px; font-size: 12px; color: var(--text-muted); text-align: center;">
+                            لا يوجد عميل بهذا الاسم أو الهاتف
+                            <div style="margin-top: 6px;">
+                                <button type="button" class="btn-primary" style="padding: 3px 10px; font-size: 11px;" onclick="openQuickCustomerModal('${escapeHtml(query)}')">
+                                    + تسجيل عميل جديد الآن
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                    customerDropdown.style.display = 'block';
+                }
+            }, 180);
+        });
 
-window.changeQty = function(index, delta) {
-    if (state.cart[index]) {
-        state.cart[index].quantity += delta;
-        if (state.cart[index].quantity <= 0) {
-            state.cart.splice(index, 1);
-        }
-        renderCart();
+        // Hide dropdown on outside click
+        document.addEventListener('click', (e) => {
+            if (!customerInput.contains(e.target) && !customerDropdown.contains(e.target)) {
+                customerDropdown.style.display = 'none';
+            }
+        });
     }
-};
 
-window.removeCartItem = function(index) {
-    if (state.cart[index]) {
-        state.cart.splice(index, 1);
-        renderCart();
+    // 5. Lookup products modal search
+    const lookupSearch = document.getElementById('lookupProductSearchInput');
+    if (lookupSearch) {
+        lookupSearch.addEventListener('input', () => {
+            filterLookupProducts();
+        });
     }
-};
 
-function clearCart() {
-    state.cart = [];
-    state.discountPercent = 0;
-    state.managerOverride = null;
-    renderCart();
-}
+    // 6. Global Strict Keyboard Shortcuts (F11, F1, F2, F4, F12, Escape)
+    window.addEventListener('keydown', (e) => {
+        const isPosActive = document.getElementById('view-pos')?.classList.contains('active');
 
-function updateCartTotals(subtotal, discountAmount, finalTotal) {
-    document.getElementById('cartSubtotal').innerText = `${subtotal.toFixed(2)} ج.م`;
-    document.getElementById('cartDiscountDisplay').innerText = `${discountAmount.toFixed(2)} ج.م (${state.discountPercent}%)`;
-    document.getElementById('cartFinalTotal').innerText = `${finalTotal.toFixed(2)} ج.م`;
-}
-
-function openDiscountModal() {
-    const modal = document.getElementById('modalDiscount');
-    document.getElementById('discountPercentInput').value = state.discountPercent;
-    
-    const overrideSection = document.getElementById('managerOverrideSection');
-    const maxCashierDiscount = Number(state.settings?.cashier_max_discount_percent || 5);
-
-    document.getElementById('discountPercentInput').oninput = (e) => {
-        const val = Number(e.target.value);
-        if (state.currentUser?.role === 'cashier' && val > maxCashierDiscount) {
-            overrideSection.style.display = 'block';
-        } else {
-            overrideSection.style.display = 'none';
+        if (e.key === 'F11') {
+            e.preventDefault();
+            if (isPosActive) addBlankPosRow();
+        } else if (e.key === 'F1') {
+            e.preventDefault();
+            if (isPosActive) openCategoryProductLookup();
+        } else if (e.key === 'F2') {
+            e.preventDefault();
+            if (isPosActive) setPosMode(state.posMode === 'sale' ? 'return' : 'sale');
+        } else if (e.key === 'F4') {
+            e.preventDefault();
+            if (isPosActive) executePosCheckout();
+        } else if (e.key === 'F12') {
+            e.preventDefault();
+            if (isPosActive) clearCart();
+        } else if (e.key === 'Escape') {
+            // Close any open backdrop modal first
+            const openModals = document.querySelectorAll('.modal-backdrop');
+            let closedAny = false;
+            openModals.forEach(m => {
+                if (m.style.display !== 'none' && m.style.display !== '') {
+                    m.style.display = 'none';
+                    closedAny = true;
+                }
+            });
+            if (!closedAny && isPosActive) {
+                e.preventDefault();
+                switchView('hub');
+            }
         }
-    };
-
-    modal.classList.add('active');
+    });
 }
 
-document.getElementById('btnApplyDiscount').addEventListener('click', () => {
-    const percent = Number(document.getElementById('discountPercentInput').value) || 0;
-    const maxCashierDiscount = Number(state.settings?.cashier_max_discount_percent || 5);
+/**
+ * Add a new blank row to POS table and focus its barcode cell (F11)
+ */
+function addBlankPosRow() {
+    const tbody = document.getElementById('posGridBody');
+    if (!tbody) return;
 
-    if (state.currentUser?.role === 'cashier' && percent > maxCashierDiscount) {
-        const overrideUser = document.getElementById('overrideUsername').value.trim();
-        const overridePass = document.getElementById('overridePassword').value;
-        if (!overrideUser || !overridePass) {
-            alert('يلزم إدخال اسم وكلمة مرور المدير لتفويض هذا الخصم');
+    // If there is already an unfilled blank row, focus it instead of duplicating
+    const existingBlank = state.posRows.find(r => !r.product);
+    if (existingBlank) {
+        const input = document.getElementById(`posBarcode_${existingBlank.id}`);
+        if (input) {
+            input.focus();
+            input.select();
             return;
         }
-        state.managerOverride = { username: overrideUser, password: overridePass };
-    } else {
-        state.managerOverride = null;
     }
 
-    state.discountPercent = percent;
-    document.getElementById('modalDiscount').classList.remove('active');
-    renderCart();
-});
+    posRowCounter++;
+    const rowId = posRowCounter;
+    const rowObj = {
+        id: rowId,
+        barcode: '',
+        product: null,
+        quantity: 1,
+        unitPrice: 0,
+        lineTotal: 0
+    };
+    state.posRows.push(rowObj);
 
-async function finalizeSale() {
-    if (!state.activeSession) {
-        alert('لا توجد وردية مفتوحة للبيع!');
-        return;
-    }
+    const tr = document.createElement('tr');
+    tr.id = `posRow_${rowId}`;
+    tr.innerHTML = `
+        <td style="text-align: center; color: var(--text-muted); font-weight: 700;" class="row-seq-col">${state.posRows.length}</td>
+        <td>
+            <input type="text" id="posBarcode_${rowId}" class="pos-row-barcode-input" 
+                   placeholder="امسح الباركود..." autocomplete="off">
+        </td>
+        <td id="posName_${rowId}" style="font-weight: 600; color: var(--text-secondary);">
+            - سطر جديد -
+        </td>
+        <td id="posStock_${rowId}" style="text-align: center;">-</td>
+        <td style="text-align: center;">
+            <input type="number" id="posQty_${rowId}" class="pos-row-qty-input" min="1" step="1" value="1" disabled>
+        </td>
+        <td id="posPrice_${rowId}" style="text-align: left; font-family: monospace;">0.00 ج.م</td>
+        <td id="posTotal_${rowId}" style="text-align: left; font-weight: 800; font-family: monospace;">0.00 ج.م</td>
+        <td style="text-align: center;">
+            <button type="button" class="btn-remove-row" onclick="removePosRow(${rowId})" title="حذف السطر">
+                <i data-lucide="trash-2" class="icon-xs"></i>
+            </button>
+        </td>
+    `;
 
-    if (state.cart.length === 0) {
-        alert('سلة المشتريات فارغة');
-        return;
-    }
+    tbody.appendChild(tr);
+    refreshIcons(tr);
 
-    const checkoutBtn = document.getElementById('btnFinalizeSale');
-    checkoutBtn.disabled = true;
+    const barcodeInput = document.getElementById(`posBarcode_${rowId}`);
+    const qtyInput = document.getElementById(`posQty_${rowId}`);
+
+    barcodeInput.addEventListener('keydown', async (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            await handlePosBarcodeScan(rowId, barcodeInput.value.trim());
+        }
+    });
+
+    qtyInput.addEventListener('input', () => {
+        handlePosQtyChange(rowId, qtyInput.value);
+    });
+
+    // Auto-focus barcode input
+    setTimeout(() => {
+        barcodeInput.focus();
+    }, 20);
+
+    updatePosStatsPills();
+}
+
+/**
+ * Handle scan or barcode entry on a specific row
+ */
+async function handlePosBarcodeScan(rowId, code) {
+    if (!code) return;
+
+    const row = state.posRows.find(r => r.id === rowId);
+    if (!row) return;
 
     try {
-        const saleData = {
+        const res = await window.api.findProductByBarcode(code);
+        if (res.success && res.data) {
+            applyProductToRow(row, res.data);
+            // Instant continuous scan: add next blank row & focus it!
+            addBlankPosRow();
+        } else {
+            // Search if there is partial match
+            const searchRes = await window.api.searchProducts(code, 5);
+            if (searchRes.success && searchRes.data && searchRes.data.length === 1) {
+                applyProductToRow(row, searchRes.data[0]);
+                addBlankPosRow();
+            } else if (searchRes.success && searchRes.data && searchRes.data.length > 1) {
+                // Open lookup modal with query
+                openCategoryProductLookup(code);
+            } else {
+                alert(`الباركود (${code}) غير مسجل في النظام.`);
+                const barcodeInput = document.getElementById(`posBarcode_${rowId}`);
+                if (barcodeInput) {
+                    barcodeInput.select();
+                }
+            }
+        }
+    } catch (err) {
+        alert(`خطأ في قراءة الباركود: ${err.message}`);
+    }
+}
+
+/**
+ * Apply product data to a POS row
+ */
+function applyProductToRow(row, product) {
+    // Inventory safety check in Sale Mode
+    if (state.posMode === 'sale') {
+        if (product.current_stock <= 0) {
+            alert(`تنبيه مخزني: الصنف (${product.item_name}) رصيده صفر في المخزن ولا يمكن بيعه!`);
+            return;
+        }
+    }
+
+    row.product = product;
+    row.barcode = product.barcode || product.product_code || String(product.id);
+    row.unitPrice = Number(product.sell_price);
+    row.quantity = 1;
+    row.lineTotal = row.unitPrice;
+
+    // Update row DOM
+    const tr = document.getElementById(`posRow_${row.id}`);
+    if (tr) {
+        tr.classList.add('active-row');
+        const barcodeInput = document.getElementById(`posBarcode_${row.id}`);
+        if (barcodeInput) barcodeInput.value = row.barcode;
+
+        const nameCell = document.getElementById(`posName_${row.id}`);
+        if (nameCell) {
+            nameCell.innerHTML = `
+                <div style="font-weight: 700; color: #0F172A;">${escapeHtml(product.item_name)}</div>
+                <div style="font-size: 11px; color: #64748B;">${escapeHtml(product.category_name || '-')}</div>
+            `;
+        }
+
+        const stockCell = document.getElementById(`posStock_${row.id}`);
+        if (stockCell) {
+            let stockClass = 'stock-ok';
+            if (product.current_stock <= 0) stockClass = 'stock-zero';
+            else if (product.current_stock <= 5) stockClass = 'stock-low';
+            stockCell.innerHTML = `<span class="stock-tag ${stockClass}">${product.current_stock}</span>`;
+        }
+
+        const qtyInput = document.getElementById(`posQty_${row.id}`);
+        if (qtyInput) {
+            qtyInput.disabled = false;
+            qtyInput.value = row.quantity;
+            qtyInput.max = state.posMode === 'sale' ? product.current_stock : 9999;
+        }
+
+        const priceCell = document.getElementById(`posPrice_${row.id}`);
+        if (priceCell) priceCell.innerText = `${row.unitPrice.toFixed(2)} ج.م`;
+
+        const totalCell = document.getElementById(`posTotal_${row.id}`);
+        if (totalCell) totalCell.innerText = `${row.lineTotal.toFixed(2)} ج.م`;
+    }
+
+    updatePosTotals();
+}
+
+/**
+ * Handle quantity change on row
+ */
+function handlePosQtyChange(rowId, val) {
+    const row = state.posRows.find(r => r.id === rowId);
+    if (!row || !row.product) return;
+
+    let qty = Number(val) || 1;
+    if (qty <= 0) qty = 1;
+
+    // Enforce positive stock limit in Sale mode
+    if (state.posMode === 'sale' && qty > row.product.current_stock) {
+        alert(`الكمية المطلوبة (${qty}) تتجاوز الرصيد المتاح بالمخزن (${row.product.current_stock}) للصنف (${row.product.item_name}).`);
+        qty = row.product.current_stock;
+        const qtyInput = document.getElementById(`posQty_${rowId}`);
+        if (qtyInput) qtyInput.value = qty;
+    }
+
+    row.quantity = qty;
+    row.lineTotal = Math.round(row.quantity * row.unitPrice * 100) / 100;
+
+    const totalCell = document.getElementById(`posTotal_${rowId}`);
+    if (totalCell) totalCell.innerText = `${row.lineTotal.toFixed(2)} ج.م`;
+
+    updatePosTotals();
+}
+
+/**
+ * Remove a row from the POS table
+ */
+function removePosRow(rowId) {
+    const idx = state.posRows.findIndex(r => r.id === rowId);
+    if (idx !== -1) {
+        state.posRows.splice(idx, 1);
+        const tr = document.getElementById(`posRow_${rowId}`);
+        if (tr) tr.remove();
+    }
+
+    // Re-index row numbers
+    const rows = document.querySelectorAll('#posGridBody tr');
+    rows.forEach((r, i) => {
+        const seqCell = r.querySelector('.row-seq-col');
+        if (seqCell) seqCell.innerText = i + 1;
+    });
+
+    if (state.posRows.length === 0) {
+        addBlankPosRow();
+    }
+
+    updatePosTotals();
+}
+
+/**
+ * Calculate Subtotal of all active rows
+ */
+function getPosSubtotal() {
+    return state.posRows
+        .filter(r => r.product != null)
+        .reduce((sum, r) => sum + r.lineTotal, 0);
+}
+
+/**
+ * Calculate grand total and update totals & 3-way balance match status
+ */
+function updatePosTotals() {
+    const subtotal = Math.round(getPosSubtotal() * 100) / 100;
+    const totalPieces = state.posRows
+        .filter(r => r.product != null)
+        .reduce((sum, r) => sum + r.quantity, 0);
+
+    const percent = Number(document.getElementById('posDiscountPercent')?.value) || 0;
+    const computedDiscount = Math.round((subtotal * (percent / 100)) * 100) / 100;
+    const finalTotal = Math.max(0, Math.round((subtotal - computedDiscount) * 100) / 100);
+
+    // Update displays
+    const subtotalEl = document.getElementById('posSubtotalDisplay');
+    if (subtotalEl) subtotalEl.innerText = `${subtotal.toFixed(2)} ج.م`;
+
+    const finalTotalEl = document.getElementById('posFinalTotalDisplay');
+    if (finalTotalEl) finalTotalEl.innerText = `${finalTotal.toFixed(2)} ج.م`;
+
+    // 3-way tender verification
+    const cash = Number(document.getElementById('posTenderCash')?.value) || 0;
+    const card = Number(document.getElementById('posTenderCard')?.value) || 0;
+    const transfer = Number(document.getElementById('posTenderTransfer')?.value) || 0;
+
+    const totalPaid = Math.round((cash + card + transfer) * 100) / 100;
+    const diff = Math.round((totalPaid - finalTotal) * 100) / 100;
+
+    const totalPaidEl = document.getElementById('posTotalPaidDisplay');
+    if (totalPaidEl) totalPaidEl.innerText = `${totalPaid.toFixed(2)} ج.م`;
+
+    const remainingEl = document.getElementById('posRemainingDisplay');
+    if (remainingEl) remainingEl.innerText = `${Math.abs(diff).toFixed(2)} ج.م`;
+
+    const badge = document.getElementById('posBalanceCheckBadge');
+    const badgeText = document.getElementById('posBalanceMatchText');
+    const checkoutBtn = document.getElementById('btnFinalizeSale');
+
+    const hasActiveProducts = state.posRows.some(r => r.product != null);
+
+    if (hasActiveProducts && finalTotal > 0 && Math.abs(diff) < 0.01) {
+        if (badge) badge.className = 'status-badge-match match-perfect';
+        if (badgeText) badgeText.innerText = 'مطابق 100% (جاهز للاعتماد)';
+        if (checkoutBtn) checkoutBtn.disabled = false;
+    } else if (hasActiveProducts && diff < 0) {
+        if (badge) badge.className = 'status-badge-match match-under';
+        if (badgeText) badgeText.innerText = `متبقي: ${Math.abs(diff).toFixed(2)} ج.م`;
+        if (checkoutBtn) checkoutBtn.disabled = true;
+    } else if (hasActiveProducts && diff > 0) {
+        if (badge) badge.className = 'status-badge-match match-over';
+        if (badgeText) badgeText.innerText = `مبلغ زائد: ${diff.toFixed(2)} ج.م`;
+        if (checkoutBtn) checkoutBtn.disabled = true;
+    } else {
+        if (badge) badge.className = 'status-badge-match match-under';
+        if (badgeText) badgeText.innerText = 'السلة فارغة';
+        if (checkoutBtn) checkoutBtn.disabled = true;
+    }
+
+    updatePosStatsPills();
+}
+
+function updatePosStatsPills() {
+    const activeRows = state.posRows.filter(r => r.product != null);
+    const countEl = document.getElementById('posRowsCount');
+    if (countEl) countEl.innerText = activeRows.length;
+
+    const piecesEl = document.getElementById('posTotalPiecesCount');
+    if (piecesEl) {
+        const pieces = activeRows.reduce((sum, r) => sum + r.quantity, 0);
+        piecesEl.innerText = pieces;
+    }
+}
+
+/**
+ * 1-Click Quick Fill for Tenders
+ */
+function setQuickTender(type) {
+    const subtotal = getPosSubtotal();
+    const percent = Number(document.getElementById('posDiscountPercent')?.value) || 0;
+    const computedDiscount = Math.round((subtotal * (percent / 100)) * 100) / 100;
+    const finalTotal = Math.max(0, Math.round((subtotal - computedDiscount) * 100) / 100);
+
+    const cashInput = document.getElementById('posTenderCash');
+    const cardInput = document.getElementById('posTenderCard');
+    const transferInput = document.getElementById('posTenderTransfer');
+
+    if (type === 'cash') {
+        if (cashInput) cashInput.value = finalTotal;
+        if (cardInput) cardInput.value = 0;
+        if (transferInput) transferInput.value = 0;
+    } else if (type === 'card') {
+        if (cashInput) cashInput.value = 0;
+        if (cardInput) cardInput.value = finalTotal;
+        if (transferInput) transferInput.value = 0;
+    } else if (type === 'transfer') {
+        if (cashInput) cashInput.value = 0;
+        if (cardInput) cardInput.value = 0;
+        if (transferInput) transferInput.value = finalTotal;
+    }
+
+    document.querySelectorAll('.btn-quick-fill').forEach(b => b.classList.remove('active'));
+    if (type === 'cash') document.getElementById('btnTenderCash')?.classList.add('active');
+    if (type === 'card') document.getElementById('btnTenderCard')?.classList.add('active');
+    if (type === 'transfer') document.getElementById('btnTenderTransfer')?.classList.add('active');
+
+    updatePosTotals();
+}
+
+/**
+ * Fill remaining balance for a specific tender
+ */
+function fillRemainingTender(type) {
+    const subtotal = getPosSubtotal();
+    const percent = Number(document.getElementById('posDiscountPercent')?.value) || 0;
+    const computedDiscount = Math.round((subtotal * (percent / 100)) * 100) / 100;
+    const finalTotal = Math.max(0, Math.round((subtotal - computedDiscount) * 100) / 100);
+
+    const cashInput = document.getElementById('posTenderCash');
+    const cardInput = document.getElementById('posTenderCard');
+    const transferInput = document.getElementById('posTenderTransfer');
+
+    const cash = Number(cashInput?.value) || 0;
+    const card = Number(cardInput?.value) || 0;
+    const transfer = Number(transferInput?.value) || 0;
+
+    if (type === 'cash') {
+        const remainder = Math.max(0, Math.round((finalTotal - card - transfer) * 100) / 100);
+        if (cashInput) cashInput.value = remainder;
+    } else if (type === 'card') {
+        const remainder = Math.max(0, Math.round((finalTotal - cash - transfer) * 100) / 100);
+        if (cardInput) cardInput.value = remainder;
+    } else if (type === 'transfer') {
+        const remainder = Math.max(0, Math.round((finalTotal - cash - card) * 100) / 100);
+        if (transferInput) transferInput.value = remainder;
+    }
+
+    updatePosTotals();
+}
+
+/**
+ * Switch POS mode between 'sale' and 'return' (F2)
+ */
+function setPosMode(mode) {
+    state.posMode = mode;
+
+    const btnSale = document.getElementById('btnPosModeSale');
+    const btnReturn = document.getElementById('btnPosModeReturn');
+    const badge = document.getElementById('posModeBadge');
+    const posView = document.getElementById('view-pos');
+    const grandLabel = document.getElementById('posGrandTotalLabel');
+    const checkoutBtnText = document.getElementById('posCheckoutBtnText');
+
+    if (mode === 'return') {
+        btnReturn?.classList.add('active');
+        btnSale?.classList.remove('active');
+        if (badge) badge.style.display = 'inline-flex';
+        posView?.classList.add('pos-return-mode');
+        if (grandLabel) grandLabel.innerText = 'المبلغ المرتجع للمشتري:';
+        if (checkoutBtnText) checkoutBtnText.innerText = 'صرف المرتجع وطباعة الإشعار (F4)';
+    } else {
+        btnSale?.classList.add('active');
+        btnReturn?.classList.remove('active');
+        if (badge) badge.style.display = 'none';
+        posView?.classList.remove('pos-return-mode');
+        if (grandLabel) grandLabel.innerText = 'الصافي المطلوب سداده:';
+        if (checkoutBtnText) checkoutBtnText.innerText = 'اعتماد الفاتورة والطباعة الفورية (F4)';
+    }
+
+    updatePosTotals();
+}
+
+/**
+ * Customer Selection & Fast Clear
+ */
+function selectPosCustomer(id, name, phone, points) {
+    state.selectedCustomer = { id, name, phone, points };
+    const dropdown = document.getElementById('posCustomerDropdown');
+    if (dropdown) dropdown.style.display = 'none';
+
+    const input = document.getElementById('posCustomerInput');
+    if (input) input.value = '';
+
+    const card = document.getElementById('posSelectedCustomerCard');
+    if (card) {
+        document.getElementById('posCustomerDisplayName').innerText = name;
+        document.getElementById('posCustomerDisplayPhone').innerText = phone || '';
+        document.getElementById('posCustomerDisplayPoints').innerText = `${points || 0} نقطة`;
+        card.style.display = 'inline-flex';
+    }
+}
+
+function clearSelectedCustomer() {
+    state.selectedCustomer = null;
+    const card = document.getElementById('posSelectedCustomerCard');
+    if (card) card.style.display = 'none';
+}
+
+function openQuickCustomerModal(prefilledName = '') {
+    const modal = document.getElementById('modalQuickCustomer');
+    const nameInput = document.getElementById('quickCustomerName');
+    const phoneInput = document.getElementById('quickCustomerPhone');
+    const notesInput = document.getElementById('quickCustomerNotes');
+
+    if (nameInput) nameInput.value = prefilledName || '';
+    if (phoneInput) phoneInput.value = '';
+    if (notesInput) notesInput.value = '';
+
+    if (modal) {
+        modal.style.display = 'flex';
+        setTimeout(() => nameInput?.focus(), 50);
+    }
+}
+
+function closeQuickCustomerModal() {
+    const modal = document.getElementById('modalQuickCustomer');
+    if (modal) modal.style.display = 'none';
+}
+
+async function submitQuickCustomer() {
+    const name = document.getElementById('quickCustomerName')?.value.trim();
+    const phone = document.getElementById('quickCustomerPhone')?.value.trim();
+    const notes = document.getElementById('quickCustomerNotes')?.value.trim();
+
+    if (!name) {
+        alert('اسم العميل مطلوب');
+        return;
+    }
+
+    try {
+        const res = await window.api.quickCreateCustomer({ name, phone, notes });
+        if (res.success && res.data) {
+            selectPosCustomer(res.data.id, res.data.name, res.data.phone, res.data.points);
+            closeQuickCustomerModal();
+        } else {
+            alert(`خطأ في تسجيل العميل: ${res.error}`);
+        }
+    } catch (err) {
+        alert(err.message);
+    }
+}
+
+/**
+ * F1 Categories & Product Lookup Modal
+ */
+async function openCategoryProductLookup(searchQuery = '') {
+    const modal = document.getElementById('modalCategoryProductLookup');
+    if (!modal) return;
+
+    modal.style.display = 'flex';
+    const searchInput = document.getElementById('lookupProductSearchInput');
+    if (searchInput) {
+        searchInput.value = searchQuery || '';
+        setTimeout(() => searchInput.focus(), 50);
+    }
+
+    // Load categories
+    const catRes = await window.api.listCategories({ activeOnly: true });
+    const sidebar = document.getElementById('lookupCategoriesSidebar');
+    if (catRes.success && catRes.data && sidebar) {
+        const cats = catRes.data;
+        sidebar.innerHTML = `
+            <button type="button" class="category-nav-item active" data-cat-id="all" onclick="selectLookupCategory('all')">
+                <span>كل الأقسام</span>
+                <span class="cat-count" id="lookupCatAllCount">${cats.length}</span>
+            </button>
+            ${cats.map(c => `
+                <button type="button" class="category-nav-item" data-cat-id="${c.id}" onclick="selectLookupCategory(${c.id})">
+                    <span>${escapeHtml(c.name)}</span>
+                </button>
+            `).join('')}
+        `;
+    }
+
+    // Load products
+    const prodRes = await window.api.listProducts({ limit: 100 });
+    if (prodRes.success && prodRes.data) {
+        posLookupAllProducts = prodRes.data;
+        filterLookupProducts();
+    }
+}
+
+function closeCategoryProductLookup() {
+    const modal = document.getElementById('modalCategoryProductLookup');
+    if (modal) modal.style.display = 'none';
+}
+
+function selectLookupCategory(catId) {
+    state.activeLookupCategoryId = catId;
+    document.querySelectorAll('.category-nav-item').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.catId == catId);
+    });
+    filterLookupProducts();
+}
+
+function filterLookupProducts() {
+    const query = document.getElementById('lookupProductSearchInput')?.value.trim().toLowerCase() || '';
+    const catId = state.activeLookupCategoryId;
+
+    let filtered = posLookupAllProducts;
+    if (catId && catId !== 'all') {
+        filtered = filtered.filter(p => p.category_id == catId);
+    }
+    if (query) {
+        filtered = filtered.filter(p =>
+            (p.item_name && p.item_name.toLowerCase().includes(query)) ||
+            (p.barcode && p.barcode.toLowerCase().includes(query)) ||
+            (p.product_code && p.product_code.toLowerCase().includes(query))
+        );
+    }
+
+    const tbody = document.getElementById('lookupProductsTableBody');
+    if (!tbody) return;
+
+    if (filtered.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 24px;">لا توجد أصناف مطابقة للبحث</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = filtered.slice(0, 40).map(p => {
+        let stockClass = 'stock-ok';
+        if (p.current_stock <= 0) stockClass = 'stock-zero';
+        else if (p.current_stock <= 5) stockClass = 'stock-low';
+
+        return `
+            <tr>
+                <td style="font-family: monospace; font-weight: 700;">${p.barcode || p.product_code || '-'}</td>
+                <td style="font-weight: 700; color: #0F172A;">${escapeHtml(p.item_name)}</td>
+                <td style="color: var(--text-muted);">${escapeHtml(p.category_name || '-')}</td>
+                <td style="font-weight: 800; color: #059669;">${Number(p.sell_price).toFixed(2)} ج.م</td>
+                <td style="text-align: center;"><span class="stock-tag ${stockClass}">${p.current_stock}</span></td>
+                <td style="text-align: center;">
+                    <button type="button" class="btn-primary" style="padding: 3px 10px; font-size: 11.5px;" onclick="addLookupProductToPos(${p.id})">
+                        + إضافة
+                    </button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function addLookupProductToPos(productId) {
+    const prod = posLookupAllProducts.find(p => p.id === productId);
+    if (!prod) return;
+
+    // Find first blank row or create one
+    let targetRow = state.posRows.find(r => r.product == null);
+    if (!targetRow) {
+        addBlankPosRow();
+        targetRow = state.posRows[state.posRows.length - 1];
+    }
+
+    applyProductToRow(targetRow, prod);
+    closeCategoryProductLookup();
+    addBlankPosRow();
+}
+
+/**
+ * Manager Override Modal for Cashier Discount Ceiling
+ */
+function openManagerOverrideModal() {
+    const modal = document.getElementById('modalManagerOverride');
+    if (modal) {
+        modal.style.display = 'flex';
+        document.getElementById('overrideManagerUser').value = '';
+        document.getElementById('overrideManagerPass').value = '';
+        setTimeout(() => document.getElementById('overrideManagerUser')?.focus(), 50);
+    }
+}
+
+function closeManagerOverrideModal() {
+    const modal = document.getElementById('modalManagerOverride');
+    if (modal) modal.style.display = 'none';
+}
+
+async function confirmManagerOverride() {
+    const username = document.getElementById('overrideManagerUser')?.value.trim();
+    const password = document.getElementById('overrideManagerPass')?.value;
+
+    if (!username || !password) {
+        alert('يرجى إدخال اسم مستخدم وكلمة مرور المدير');
+        return;
+    }
+
+    const res = await window.api.verifyManager(username, password);
+    if (res.success) {
+        state.managerOverride = { username, password };
+        closeManagerOverrideModal();
+        // Proceed with checkout
+        executePosCheckout();
+    } else {
+        alert(`فشل التحقق من صلاحية المدير: ${res.error}`);
+    }
+}
+
+/**
+ * Execute POS Checkout & Instant Thermal Print (F4)
+ */
+async function executePosCheckout() {
+    if (!state.activeSession) {
+        alert('تنبيه: يجب فتح وردية يومية أولاً لإتمام البيع أو الاسترجاع!');
+        switchView('sales-hub');
+        return;
+    }
+
+    const verifiedItems = state.posRows
+        .filter(r => r.product != null)
+        .map(r => ({
+            productId: r.product.id,
+            quantity: r.quantity,
+            unitPrice: r.unitPrice,
+            itemName: r.product.item_name
+        }));
+
+    if (verifiedItems.length === 0) {
+        alert('سلة الفاتورة فارغة! يرجى مسح باركود الأصناف أولاً.');
+        return;
+    }
+
+    // Cashier discount ceiling check
+    const maxCashierDiscount = Number(state.settings?.cashier_max_discount_percent || 5);
+    if (state.currentUser?.role === 'cashier' && state.discountPercent > maxCashierDiscount && !state.managerOverride) {
+        openManagerOverrideModal();
+        return;
+    }
+
+    // Read payment tenders
+    const cash = Number(document.getElementById('posTenderCash')?.value) || 0;
+    const card = Number(document.getElementById('posTenderCard')?.value) || 0;
+    const transfer = Number(document.getElementById('posTenderTransfer')?.value) || 0;
+
+    // Return mode cash drawer safety check
+    if (state.posMode === 'return' && cash > 0) {
+        try {
+            const drawerRes = await window.api.getDrawerCash(state.activeSession.id);
+            const currentDrawer = Number(drawerRes?.data ?? drawerRes ?? 0);
+            if (cash > currentDrawer) {
+                alert(`عفواً! لا يتوفر رصيد نقدي كافٍ في الخزينة لإتمام المرتجع النقدي.\nالرصيد المتاح في الدرج: ${currentDrawer.toFixed(2)} ج.م\nالمطلوب صرفه نقداً: ${cash.toFixed(2)} ج.م`);
+                return;
+            }
+        } catch (err) {
+            console.error('Failed to verify drawer cash:', err);
+        }
+    }
+
+    // Determine payment method label
+    let paymentMethod = 'split';
+    if (cash > 0 && card === 0 && transfer === 0) paymentMethod = 'cash';
+    else if (card > 0 && cash === 0 && transfer === 0) paymentMethod = 'card';
+    else if (transfer > 0 && cash === 0 && card === 0) paymentMethod = 'transfer';
+
+    const checkoutBtn = document.getElementById('btnFinalizeSale');
+    if (checkoutBtn) checkoutBtn.disabled = true;
+
+    try {
+        const payload = {
             sessionId: state.activeSession.id,
             userId: state.currentUser.id,
             userRole: state.currentUser.role,
-            items: state.cart.map(i => ({
-                productId: i.productId,
-                quantity: i.quantity,
-                itemName: i.itemName
-            })),
+            invoiceType: state.posMode,
+            customerId: state.selectedCustomer?.id || null,
+            customerName: state.selectedCustomer?.name || null,
+            customerPhone: state.selectedCustomer?.phone || null,
+            items: verifiedItems,
             discountPercent: state.discountPercent,
-            paymentMethod: state.selectedPaymentMethod,
+            discountAmount: Number(document.getElementById('posDiscountAmount')?.value) || 0,
+            paymentMethod,
+            splitPayments: { cash, card, transfer },
             managerOverride: state.managerOverride
         };
 
-        const res = await window.api.checkout(saleData);
+        const res = await window.api.checkout(payload);
         if (!res.success) {
-            alert(`خطأ في إتمام العملية: ${res.error}`);
-            checkoutBtn.disabled = false;
+            alert(`خطأ في اعتماد الفاتورة: ${res.error}`);
+            if (checkoutBtn) checkoutBtn.disabled = false;
             return;
         }
 
         const invoice = res.data;
         state.currentInvoiceId = invoice.id;
 
-        // Auto print or show preview
-        const receiptHtml = await window.api.previewReceiptHtml(invoice.id);
-        if (receiptHtml.success) {
-            document.getElementById('receiptPreviewContent').innerHTML = receiptHtml.data;
-            document.getElementById('modalReceiptPreview').classList.add('active');
+        // Instant 80mm thermal receipt trigger
+        const previewRes = await window.api.previewReceiptHtml(invoice.id);
+        if (previewRes.success && previewRes.data) {
+            // Open print window
+            const printWindow = window.open('', '_blank', 'width=420,height=600');
+            if (printWindow) {
+                printWindow.document.write(previewRes.data);
+                printWindow.document.close();
+                setTimeout(() => {
+                    printWindow.print();
+                }, 300);
+            }
         }
 
+        // Reset for next sale
         clearCart();
-        await loadPosProducts();
         await refreshSessionState();
+
     } catch (err) {
-        alert(err.message);
+        alert(`فشل إتمام العملية: ${err.message}`);
     } finally {
-        checkoutBtn.disabled = false;
+        if (checkoutBtn) checkoutBtn.disabled = false;
     }
 }
 
-document.getElementById('btnPrintReceiptFromPreview').addEventListener('click', async () => {
-    if (state.currentInvoiceId) {
-        await window.api.printInvoiceReceipt(state.currentInvoiceId);
-        document.getElementById('modalReceiptPreview').classList.remove('active');
+/**
+ * Clear POS Cart and start fresh (F12)
+ */
+function clearCart() {
+    state.posRows = [];
+    state.discountPercent = 0;
+    state.managerOverride = null;
+    clearSelectedCustomer();
+
+    const discPercentInput = document.getElementById('posDiscountPercent');
+    if (discPercentInput) discPercentInput.value = 0;
+
+    const discAmountInput = document.getElementById('posDiscountAmount');
+    if (discAmountInput) discAmountInput.value = 0;
+
+    const cashInput = document.getElementById('posTenderCash');
+    if (cashInput) cashInput.value = 0;
+    const cardInput = document.getElementById('posTenderCard');
+    if (cardInput) cardInput.value = 0;
+    const transferInput = document.getElementById('posTenderTransfer');
+    if (transferInput) transferInput.value = 0;
+
+    const tbody = document.getElementById('posGridBody');
+    if (tbody) tbody.innerHTML = '';
+
+    addBlankPosRow();
+    updatePosTotals();
+}
+
+/**
+ * Refresh Active Daily Session State and POS Drawer Indicators
+ */
+async function refreshSessionState() {
+    try {
+        const res = await window.api.getActiveSession();
+        if (res && res.success && res.data) {
+            state.activeSession = res.data;
+            const codeEl = document.getElementById('posCurrentSessionCode');
+            if (codeEl) codeEl.innerText = res.data.session_code;
+
+            // Fetch live drawer cash balance
+            const drawerRes = await window.api.getDrawerCash(res.data.id);
+            const drawerCash = Number((drawerRes && drawerRes.data !== undefined) ? drawerRes.data : drawerRes) || 0;
+            state.drawerCash = drawerCash;
+
+            const cashEl = document.getElementById('posDrawerCashDisplay');
+            if (cashEl) cashEl.innerText = `${drawerCash.toFixed(2)} ج.م`;
+        } else {
+            state.activeSession = null;
+            state.drawerCash = 0;
+            const codeEl = document.getElementById('posCurrentSessionCode');
+            if (codeEl) codeEl.innerText = 'لا توجد وردية مفتوحة';
+            const cashEl = document.getElementById('posDrawerCashDisplay');
+            if (cashEl) cashEl.innerText = '0.00 ج.م';
+        }
+
+        if (typeof loadSessionDashboard === 'function') {
+            loadSessionDashboard();
+        }
+    } catch (err) {
+        console.error('Failed to refresh session state:', err);
     }
-});
+}
+window.refreshSessionState = refreshSessionState;
 
 /* -------------------------------------------------------------
  * 4. DAILY SESSION & Z-REPORT LOGIC

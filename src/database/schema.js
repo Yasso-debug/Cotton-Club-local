@@ -66,18 +66,37 @@ CREATE TABLE IF NOT EXISTS daily_sessions (
     closed_at TEXT
 );
 
+-- 4.5 Customers Directory
+CREATE TABLE IF NOT EXISTS customers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    phone TEXT UNIQUE,
+    email TEXT,
+    points INTEGER NOT NULL DEFAULT 0,
+    total_spent REAL NOT NULL DEFAULT 0,
+    notes TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+
 -- 5. Sales Invoices
 CREATE TABLE IF NOT EXISTS sales_invoices (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     invoice_number TEXT NOT NULL UNIQUE,
+    invoice_type TEXT NOT NULL DEFAULT 'sale' CHECK(invoice_type IN ('sale', 'return')),
     session_id INTEGER NOT NULL REFERENCES daily_sessions(id),
     user_id INTEGER NOT NULL REFERENCES users(id),
-    subtotal REAL NOT NULL CHECK(subtotal >= 0),
+    customer_id INTEGER REFERENCES customers(id),
+    customer_name TEXT,
+    customer_phone TEXT,
+    subtotal REAL NOT NULL,
     discount_amount REAL NOT NULL DEFAULT 0 CHECK(discount_amount >= 0),
     discount_percent REAL NOT NULL DEFAULT 0 CHECK(discount_percent >= 0 AND discount_percent <= 100),
-    final_total REAL NOT NULL CHECK(final_total >= 0),
-    total_cost REAL NOT NULL DEFAULT 0 CHECK(total_cost >= 0),
-    payment_method TEXT NOT NULL CHECK(payment_method IN ('cash', 'card', 'split')),
+    final_total REAL NOT NULL,
+    cash_amount REAL NOT NULL DEFAULT 0,
+    card_amount REAL NOT NULL DEFAULT 0,
+    transfer_amount REAL NOT NULL DEFAULT 0,
+    total_cost REAL NOT NULL DEFAULT 0,
+    payment_method TEXT NOT NULL CHECK(payment_method IN ('cash', 'card', 'transfer', 'split')),
     status TEXT NOT NULL DEFAULT 'completed' CHECK(status IN ('completed', 'voided', 'refunded')),
     notes TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
@@ -101,7 +120,7 @@ CREATE TABLE IF NOT EXISTS sale_line_items (
 CREATE TABLE IF NOT EXISTS payment_splits (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     invoice_id INTEGER NOT NULL REFERENCES sales_invoices(id) ON DELETE CASCADE,
-    method TEXT NOT NULL CHECK(method IN ('cash', 'card')),
+    method TEXT NOT NULL CHECK(method IN ('cash', 'card', 'transfer')),
     amount REAL NOT NULL CHECK(amount > 0)
 );
 

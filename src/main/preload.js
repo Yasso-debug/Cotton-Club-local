@@ -27,6 +27,9 @@ contextBridge.exposeInMainWorld('api', {
     // POS
     searchProducts: (query, limit) => ipcRenderer.invoke('pos:search-products', { query, limit }),
     findProductByBarcode: (barcode) => ipcRenderer.invoke('pos:find-barcode', { barcode }),
+    searchCustomers: (query, limit) => ipcRenderer.invoke('pos:search-customers', { query, limit }),
+    quickCreateCustomer: (data) => ipcRenderer.invoke('pos:quick-create-customer', { data }),
+    getDrawerCash: (sessionId) => ipcRenderer.invoke('pos:get-drawer-cash', { sessionId }),
     checkout: (saleData) => ipcRenderer.invoke('pos:checkout', saleData),
     getInvoice: (id) => ipcRenderer.invoke('pos:get-invoice', { id }),
     voidInvoice: (invoiceId, managerUserId, reason) => ipcRenderer.invoke('pos:void-invoice', { invoiceId, managerUserId, reason }),

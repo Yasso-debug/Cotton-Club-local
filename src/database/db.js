@@ -207,6 +207,57 @@ class DatabaseManager {
             if (!returnCols.includes('refund_breakdown')) {
                 this.db.exec("ALTER TABLE purchase_returns ADD COLUMN refund_breakdown TEXT;");
             }
+
+            // 9. POS Master Overhaul: Upgrade sales_invoices and customers
+            this.db.exec(`
+                CREATE TABLE IF NOT EXISTS customers (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    phone TEXT UNIQUE,
+                    email TEXT,
+                    points INTEGER NOT NULL DEFAULT 0,
+                    total_spent REAL NOT NULL DEFAULT 0,
+                    notes TEXT,
+                    created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+                );
+                CREATE INDEX IF NOT EXISTS idx_customers_phone ON customers(phone);
+            `);
+
+            const salesCols = this.db.prepare("PRAGMA table_info(sales_invoices)").all().map(c => c.name);
+            if (!salesCols.includes('invoice_type')) {
+                this.db.exec("ALTER TABLE sales_invoices ADD COLUMN invoice_type TEXT NOT NULL DEFAULT 'sale';");
+            }
+            if (!salesCols.includes('customer_id')) {
+                this.db.exec("ALTER TABLE sales_invoices ADD COLUMN customer_id INTEGER;");
+            }
+            if (!salesCols.includes('customer_name')) {
+                this.db.exec("ALTER TABLE sales_invoices ADD COLUMN customer_name TEXT;");
+            }
+            if (!salesCols.includes('customer_phone')) {
+                this.db.exec("ALTER TABLE sales_invoices ADD COLUMN customer_phone TEXT;");
+            }
+            if (!salesCols.includes('cash_amount')) {
+                this.db.exec("ALTER TABLE sales_invoices ADD COLUMN cash_amount REAL NOT NULL DEFAULT 0;");
+            }
+            if (!salesCols.includes('card_amount')) {
+                this.db.exec("ALTER TABLE sales_invoices ADD COLUMN card_amount REAL NOT NULL DEFAULT 0;");
+            }
+            if (!salesCols.includes('transfer_amount')) {
+                this.db.exec("ALTER TABLE sales_invoices ADD COLUMN transfer_amount REAL NOT NULL DEFAULT 0;");
+            }
+
+            // Seed default POS & security settings if missing
+            const insertSettingIfMissing = (key, val, desc) => {
+                const exist = this.db.prepare("SELECT key FROM app_settings WHERE key = ?").get(key);
+                if (!exist) {
+                    this.db.prepare("INSERT INTO app_settings (key, value, description) VALUES (?, ?, ?)").run(key, val, desc);
+                }
+            };
+
+            insertSettingIfMissing('cashier_max_discount_percent', '5', 'الحد الأقصى لنسبة الخصم المسموح بها للكاشير دون موافقة المدير');
+            insertSettingIfMissing('require_customer_name', '0', 'إلزامية إدخال اسم العميل في فواتير البيع (1 نعم، 0 اختياري)');
+            insertSettingIfMissing('require_customer_phone', '0', 'إلزامية إدخال هاتف العميل في فواتير البيع (1 نعم، 0 اختياري)');
+            insertSettingIfMissing('auto_close_shift_time', '01:00', 'موعد الإغلاق التلقائي اليومي للورديات المفتوحة');
         } catch (err) {
             console.error('[Database Migration Warning]:', err.message);
         }

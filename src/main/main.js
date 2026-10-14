@@ -80,6 +80,9 @@ function registerIpcHandlers() {
     // POS
     handle('pos:search-products', ({ query, limit }) => services.pos.searchProducts(query, limit));
     handle('pos:find-barcode', ({ barcode }) => services.pos.findProductByBarcode(barcode));
+    handle('pos:search-customers', ({ query, limit }) => services.pos.searchCustomers(query, limit));
+    handle('pos:quick-create-customer', (params) => services.pos.quickCreateCustomer(params?.data || params));
+    handle('pos:get-drawer-cash', ({ sessionId }) => services.pos.getDrawerCash(sessionId));
     handle('pos:checkout', (saleData) => services.pos.checkout(saleData));
     handle('pos:get-invoice', ({ id }) => services.pos.getInvoiceById(id));
     handle('pos:void-invoice', ({ invoiceId, managerUserId, reason }) => services.pos.voidInvoice(invoiceId, managerUserId, reason));

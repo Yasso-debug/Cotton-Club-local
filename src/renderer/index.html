@@ -176,110 +176,249 @@
                 </div>
             </section>
 
-            <!-- 1. POS View -->
+            <!-- 1. POS View (High-Speed Retail Engine) -->
             <section id="view-pos" class="view-panel">
-                <div class="view-header" style="margin-bottom: 0; padding: 12px 24px;">
-                    <div style="display: flex; align-items: center; gap: 14px;">
+                <!-- Top Control & Status Header -->
+                <div class="pos-top-header">
+                    <div class="pos-header-left">
                         <button class="btn-back-hub" onclick="switchView('hub')" title="الرجوع إلى لوحة التحكم الرئيسية (Esc)">
                             <i data-lucide="arrow-right" class="icon-sm"></i>
-                            <span>الرئيسية</span>
+                            <span>الرئيسية (Esc)</span>
                         </button>
-                        <div>
-                            <h2 style="font-size: 17px; margin: 0; font-weight: 800; display: flex; align-items: center; gap: 8px;">
-                                <i data-lucide="shopping-cart" class="icon-sm" style="color: var(--primary);"></i>
-                                <span>نقطة البيع المباشر (POS - F1)</span>
-                            </h2>
-                            <span style="font-size: 11px; color: var(--text-muted);">إصدار فواتير البيع الفورية وقراءة الباركود</span>
-                        </div>
-                    </div>
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <span class="card-kpi-pill" style="font-size: 11px; padding: 5px 12px;">F1: باركود | F4: خصم | F10: بيع | F12: تفريغ</span>
-                    </div>
-                </div>
-                <div class="pos-container">
-                    <!-- Left: Search & Products Table -->
-                    <div class="pos-left">
-                        <div class="search-bar-wrap">
-                            <input type="text" id="posBarcodeInput" class="input-barcode" 
-                                   placeholder="امسح الباركود أو اكتب اسم الصنف ثم اضغط Enter (F1)..." autofocus>
-                            <span class="key-hint">F1</span>
+                        
+                        <!-- Sale vs Return Mode Switcher -->
+                        <div class="pos-mode-switcher" id="posModeSwitcher">
+                            <button type="button" id="btnPosModeSale" class="btn-pos-mode active" onclick="setPosMode('sale')" title="وضع البيع المباشر (F2)">
+                                <i data-lucide="shopping-cart" class="icon-sm"></i>
+                                <span>فاتورة بيع (F2)</span>
+                            </button>
+                            <button type="button" id="btnPosModeReturn" class="btn-pos-mode return" onclick="setPosMode('return')" title="وضع مرتجع المبيعات (F2)">
+                                <i data-lucide="rotate-ccw" class="icon-sm"></i>
+                                <span>مرتجع مبيعات (F2)</span>
+                            </button>
                         </div>
 
-                        <div class="table-container">
-                            <table class="data-table">
+                        <!-- Active Mode Alert Badge (Shows in return mode) -->
+                        <div id="posModeBadge" class="pos-mode-alert-badge" style="display: none;">
+                            <i data-lucide="alert-triangle" class="icon-xs"></i>
+                            <span>وضع إرجاع بضاعة (إدخال مخزني + استرداد نقدية)</span>
+                        </div>
+                    </div>
+
+                    <!-- Shift Info & Shortcuts Banner -->
+                    <div class="pos-header-right">
+                        <div class="pos-drawer-stat-pill">
+                            <span class="pill-label">الوردية:</span>
+                            <strong id="posCurrentSessionCode" class="pill-val">-</strong>
+                            <span class="pill-sep">|</span>
+                            <span class="pill-label">نقدية الدرج:</span>
+                            <strong id="posDrawerCashDisplay" class="pill-val">0.00 ج.م</strong>
+                        </div>
+                        <div class="pos-shortcuts-strip">
+                            <span class="k-chip"><kbd>F11</kbd> سطر فارغ</span>
+                            <span class="k-chip"><kbd>F1</kbd> المجاميع والأصناف</span>
+                            <span class="k-chip"><kbd>F2</kbd> بيع/مرتجع</span>
+                            <span class="k-chip"><kbd>F4</kbd> اعتماد وطباعة</span>
+                            <span class="k-chip"><kbd>F12</kbd> تفريغ</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Customer Fast Bar -->
+                <div class="pos-customer-strip">
+                    <div class="customer-search-box">
+                        <i data-lucide="user-search" class="icon-sm search-icon"></i>
+                        <input type="text" id="posCustomerInput" class="pos-customer-input" placeholder="ابحث عن العميل بالاسم أو رقم الهاتف..." autocomplete="off">
+                        <button type="button" class="btn-add-customer-quick" onclick="openQuickCustomerModal()" title="تسجيل عميل جديد">
+                            <i data-lucide="user-plus" class="icon-xs"></i>
+                            <span>عميل جديد</span>
+                        </button>
+                        <!-- Live Autocomplete Dropdown -->
+                        <div id="posCustomerDropdown" class="pos-customer-dropdown" style="display: none;"></div>
+                    </div>
+
+                    <div id="posSelectedCustomerCard" class="pos-selected-customer-card" style="display: none;">
+                        <div class="customer-info-inline">
+                            <i data-lucide="user-check" class="icon-xs" style="color: var(--accent-emerald);"></i>
+                            <span id="posCustomerDisplayName" class="customer-name-tag">اسم العميل</span>
+                            <span id="posCustomerDisplayPhone" class="customer-phone-tag">01000000000</span>
+                            <span id="posCustomerDisplayPoints" class="customer-points-tag">0 نقطة</span>
+                        </div>
+                        <button type="button" class="btn-clear-customer" onclick="clearSelectedCustomer()" title="إزالة العميل">
+                            <i data-lucide="x" class="icon-xs"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Main Work Area: Left (Interactive Fast Table) & Right (Summary & 3-Way Tenders) -->
+                <div class="pos-grid-container">
+                    <!-- Left: Strict Keyboard Table (F11) -->
+                    <div class="pos-table-card">
+                        <div class="pos-table-toolbar">
+                            <div class="toolbar-left">
+                                <button type="button" id="btnAddEmptyPosRow" class="btn-add-row" onclick="addBlankPosRow()" title="إضافة سطر فارغ جديد (F11)">
+                                    <i data-lucide="plus-circle" class="icon-sm"></i>
+                                    <span>إضافة سطر فارغ (F11)</span>
+                                </button>
+                                <button type="button" class="btn-browse-categories" onclick="openCategoryProductLookup()" title="تصفح المجاميع والأصناف (F1)">
+                                    <i data-lucide="layout-grid" class="icon-sm"></i>
+                                    <span>المجاميع والأصناف (F1)</span>
+                                </button>
+                            </div>
+                            <div class="toolbar-right">
+                                <span class="table-stats-pill">
+                                    <span>عدد السطور: </span>
+                                    <strong id="posRowsCount">0</strong>
+                                    <span style="margin: 0 4px;">|</span>
+                                    <span>إجمالي القطع: </span>
+                                    <strong id="posTotalPiecesCount">0</strong>
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- Row-by-Row POS Table -->
+                        <div class="pos-table-scroll-wrap">
+                            <table class="pos-interactive-table" id="posTable">
                                 <thead>
                                     <tr>
-                                        <th>الباركود</th>
-                                        <th>اسم الصنف</th>
-                                        <th>القسم</th>
-                                        <th>السعر</th>
-                                        <th>المتوفر</th>
-                                        <th style="text-align: center;">إجراء</th>
+                                        <th style="width: 40px; text-align: center;">#</th>
+                                        <th style="width: 170px;">الباركود / الكود (Enter)</th>
+                                        <th>اسم الصنف والبيان</th>
+                                        <th style="width: 100px; text-align: center;">الرصيد المتاح</th>
+                                        <th style="width: 95px; text-align: center;">الكمية</th>
+                                        <th style="width: 110px; text-align: left;">سعر الوحدة</th>
+                                        <th style="width: 120px; text-align: left;">الإجمالي</th>
+                                        <th style="width: 50px; text-align: center;">حذف</th>
                                     </tr>
                                 </thead>
-                                <tbody id="posProductsTableBody">
-                                    <!-- Populated dynamically -->
+                                <tbody id="posGridBody">
+                                    <!-- Dynamic Rows with Scanner inputs -->
                                 </tbody>
                             </table>
                         </div>
                     </div>
 
-                    <!-- Right: Cart & Checkout Panel -->
-                    <div class="pos-right">
-                        <div class="cart-header">
-                            <h3 style="font-size: 15px; font-weight: 800; color: var(--text-primary); display: flex; align-items: center; gap: 6px;">
-                                <i data-lucide="shopping-bag" class="icon-sm" style="color: var(--primary);"></i>
-                                <span>سلة الفاتورة الحالية</span>
-                            </h3>
-                            <button id="btnClearCart" class="btn-secondary" style="padding: 4px 10px; font-size: 12px; display: flex; align-items: center; gap: 4px;">
+                    <!-- Right: Summary, 3-Way Tender, and F4 Checkout -->
+                    <div class="pos-checkout-card">
+                        <div class="checkout-card-header">
+                            <div class="title-wrap">
+                                <i data-lucide="receipt" class="icon-sm header-icon"></i>
+                                <span class="header-text">حساب الفاتورة والدفع</span>
+                            </div>
+                            <button type="button" id="btnClearPosCart" class="btn-clear-invoice" onclick="clearCart()" title="تفريغ الفاتورة الحالية (F12)">
                                 <i data-lucide="trash-2" class="icon-xs"></i>
                                 <span>تفريغ (F12)</span>
                             </button>
                         </div>
 
-                        <!-- Cart items list -->
-                        <div id="cartItemsContainer" class="cart-items-scroll">
-                            <div style="color: var(--text-muted); text-align: center; margin-top: 40px; font-size: 13px;">
-                                السلة فارغة، قم بمسح باركود لإضافة الأصناف
+                        <!-- Totals Breakdown -->
+                        <div class="pos-totals-breakdown">
+                            <div class="total-row">
+                                <span class="label">المجموع الفرعي:</span>
+                                <strong id="posSubtotalDisplay" class="value">0.00 ج.م</strong>
+                            </div>
+
+                            <!-- Discount Input with Cashier Ceiling Notice -->
+                            <div class="total-row discount-row">
+                                <div class="discount-inputs-wrap">
+                                    <span class="label">الخصم المطبق:</span>
+                                    <div class="disc-inputs">
+                                        <div class="input-with-symbol">
+                                            <input type="number" id="posDiscountPercent" min="0" max="100" step="1" value="0" placeholder="0">
+                                            <span class="sym">%</span>
+                                        </div>
+                                        <span class="disc-eq">=</span>
+                                        <div class="input-with-symbol">
+                                            <input type="number" id="posDiscountAmount" min="0" step="0.5" value="0" placeholder="0.00">
+                                            <span class="sym">ج.م</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div id="posCashierCeilingWarning" class="cashier-ceiling-msg" style="display: none;">
+                                    <i data-lucide="info" class="icon-xs"></i>
+                                    <span>الحد الأقصى للخصم للكاشير هو 5%. يتطلب موافقة المدير للزيادة.</span>
+                                </div>
+                            </div>
+
+                            <!-- Grand Total Banner -->
+                            <div class="grand-total-banner" id="posGrandTotalBanner">
+                                <div class="banner-label" id="posGrandTotalLabel">الصافي المطلوب سداده:</div>
+                                <div class="banner-value" id="posFinalTotalDisplay">0.00 ج.م</div>
                             </div>
                         </div>
 
-                        <!-- Summary & Payment -->
-                        <div class="cart-summary-box">
-                            <div class="summary-line">
-                                <span>المجموع الفرعي:</span>
-                                <span id="cartSubtotal">0.00 ج.م</span>
-                            </div>
-                            <div class="summary-line" style="cursor: pointer;" id="btnOpenDiscountModal">
-                                <span>الخصم المطبق (F4):</span>
-                                <span id="cartDiscountDisplay" style="color: var(--accent-rose);">0.00 ج.م (0%)</span>
-                            </div>
-                            <div class="summary-line grand-total">
-                                <span>الصافي المطلوب:</span>
-                                <span id="cartFinalTotal">0.00 ج.م</span>
+                        <!-- 3-Way Payment Tender Matrix -->
+                        <div class="pos-payment-matrix">
+                            <div class="matrix-heading">
+                                <span>طريقة التحصيل / السداد:</span>
+                                <div class="quick-pay-all-wrap">
+                                    <button type="button" class="btn-quick-fill active" id="btnTenderCash" onclick="setQuickTender('cash')">نقدي كامل</button>
+                                    <button type="button" class="btn-quick-fill" id="btnTenderCard" onclick="setQuickTender('card')">شبكة كامل</button>
+                                    <button type="button" class="btn-quick-fill" id="btnTenderTransfer" onclick="setQuickTender('transfer')">تحويل كامل</button>
+                                </div>
                             </div>
 
-                            <div style="margin-top: 6px; font-size: 12px; color: var(--text-secondary); font-weight: 600;">
-                                طريقة الدفع (F5):
-                            </div>
-                            <div class="payment-methods-grid">
-                                <button class="btn-payment-method active" data-method="cash">
-                                    <i data-lucide="banknote" class="icon-sm lead-icon"></i>
-                                    <span>كاش (نقدي)</span>
-                                </button>
-                                <button class="btn-payment-method" data-method="card">
-                                    <i data-lucide="credit-card" class="icon-sm lead-icon"></i>
-                                    <span>شبكة / بطاقة</span>
-                                </button>
-                                <button class="btn-payment-method" data-method="split">
-                                    <i data-lucide="split" class="icon-sm lead-icon"></i>
-                                    <span>دفع مجزأ</span>
-                                </button>
+                            <!-- 3 Input Fields for Multi-Tender -->
+                            <div class="tender-rows-container">
+                                <!-- Cash Row -->
+                                <div class="tender-row">
+                                    <div class="tender-label">
+                                        <i data-lucide="banknote" class="icon-xs"></i>
+                                        <span>نقدي (كاش):</span>
+                                    </div>
+                                    <div class="tender-input-wrap">
+                                        <input type="number" id="posTenderCash" min="0" step="0.5" value="0" placeholder="0.00">
+                                        <button type="button" class="btn-fill-remaining" onclick="fillRemainingTender('cash')" title="سداد المتبقي كاش">المتبقي</button>
+                                    </div>
+                                </div>
+
+                                <!-- Card Row -->
+                                <div class="tender-row">
+                                    <div class="tender-label">
+                                        <i data-lucide="credit-card" class="icon-xs"></i>
+                                        <span>شبكة / فيزا:</span>
+                                    </div>
+                                    <div class="tender-input-wrap">
+                                        <input type="number" id="posTenderCard" min="0" step="0.5" value="0" placeholder="0.00">
+                                        <button type="button" class="btn-fill-remaining" onclick="fillRemainingTender('card')" title="سداد المتبقي شبكة">المتبقي</button>
+                                    </div>
+                                </div>
+
+                                <!-- Transfer / Wallet Row -->
+                                <div class="tender-row">
+                                    <div class="tender-label">
+                                        <i data-lucide="smartphone" class="icon-xs"></i>
+                                        <span>تحويل / محفظة:</span>
+                                    </div>
+                                    <div class="tender-input-wrap">
+                                        <input type="number" id="posTenderTransfer" min="0" step="0.5" value="0" placeholder="0.00">
+                                        <button type="button" class="btn-fill-remaining" onclick="fillRemainingTender('transfer')" title="سداد المتبقي تحويل">المتبقي</button>
+                                    </div>
+                                </div>
                             </div>
 
-                            <button id="btnFinalizeSale" class="btn-checkout">
-                                <i data-lucide="printer" class="icon-md lead-icon"></i>
-                                <span>إتمام البيع والطباعة (F10)</span>
+                            <!-- Live Balance Match Indicator -->
+                            <div class="tender-status-box" id="posTenderStatusBox">
+                                <div class="status-metric">
+                                    <span>إجمالي المدفوع:</span>
+                                    <strong id="posTotalPaidDisplay">0.00 ج.م</strong>
+                                </div>
+                                <div class="status-metric">
+                                    <span>المتبقي:</span>
+                                    <strong id="posRemainingDisplay">0.00 ج.م</strong>
+                                </div>
+                                <div id="posBalanceCheckBadge" class="status-badge-match match-perfect">
+                                    <i data-lucide="check-circle" class="icon-xs"></i>
+                                    <span id="posBalanceMatchText">مطابق 100%</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Final Checkout Button (F4) -->
+                        <div class="pos-action-bottom">
+                            <button type="button" id="btnFinalizeSale" class="btn-execute-checkout" onclick="executePosCheckout()">
+                                <i data-lucide="printer" class="icon-md"></i>
+                                <span id="posCheckoutBtnText">اعتماد الفاتورة والطباعة الفورية (F4)</span>
                             </button>
                         </div>
                     </div>
@@ -4399,6 +4538,143 @@
                 <button type="button" id="btnPreviewPrintReceipt" class="btn-primary" style="display: flex; align-items: center; gap: 6px;">
                     <i data-lucide="printer" class="icon-sm"></i>
                     <span>طباعة إيصال الفاتورة</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: F1 Categories & Products Lookup -->
+    <div id="modalCategoryProductLookup" class="modal-backdrop" style="display: none;">
+        <div class="modal-card" style="max-width: 900px; width: 95%;">
+            <div class="modal-header">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <div style="background: #E0F2FE; color: #0284C7; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                        <i data-lucide="layout-grid" class="icon-sm"></i>
+                    </div>
+                    <div>
+                        <h3 style="font-size: 16px; margin: 0; font-weight: 800;">دليل المجاميع والبحث الذكي بالأصناف (F1)</h3>
+                        <span style="font-size: 11px; color: var(--text-muted);">تصفح المنتجات حسب الأقسام أو البحث الفوري بالاسم والكود والرصيد</span>
+                    </div>
+                </div>
+                <button type="button" class="btn-del" onclick="closeCategoryProductLookup()" title="إغلاق (Esc)"><i data-lucide="x" class="icon-sm"></i></button>
+            </div>
+            <div class="modal-body" style="padding: 16px 20px;">
+                <div class="category-lookup-wrapper">
+                    <!-- Right: Categories Sidebar -->
+                    <div class="categories-sidebar" id="lookupCategoriesSidebar">
+                        <button type="button" class="category-nav-item active" data-cat-id="all" onclick="selectLookupCategory('all')">
+                            <span>كل الأقسام</span>
+                            <span class="cat-count" id="lookupCatAllCount">0</span>
+                        </button>
+                        <!-- Dynamic Categories List -->
+                    </div>
+
+                    <!-- Left: Search & Products Grid/Table -->
+                    <div class="lookup-products-panel">
+                        <div class="lookup-search-bar">
+                            <i data-lucide="search" class="icon-sm search-icon"></i>
+                            <input type="text" id="lookupProductSearchInput" class="lookup-search-input" placeholder="اكتب اسم الصنف، الباركود، كود الموديل..." autofocus autocomplete="off">
+                        </div>
+
+                        <div class="lookup-table-wrap">
+                            <table class="data-table" style="font-size: 12px;">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 130px;">الباركود</th>
+                                        <th>اسم الصنف</th>
+                                        <th style="width: 110px;">القسم</th>
+                                        <th style="width: 90px; text-align: left;">السعر</th>
+                                        <th style="width: 80px; text-align: center;">المتوفر</th>
+                                        <th style="width: 70px; text-align: center;">إجراء</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="lookupProductsTableBody">
+                                    <!-- Dynamic rows -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 11.5px; color: var(--text-muted);">انقر على "إضافة" أو اضغط Enter على أي صنف لإدراجه فوراً في الفاتورة</span>
+                <button type="button" class="btn-secondary" onclick="closeCategoryProductLookup()">إغلاق (Esc)</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Quick Customer Create -->
+    <div id="modalQuickCustomer" class="modal-backdrop" style="display: none;">
+        <div class="modal-card" style="max-width: 440px; width: 95%;">
+            <div class="modal-header">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <div style="background: #ECFDF5; color: #059669; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                        <i data-lucide="user-plus" class="icon-sm"></i>
+                    </div>
+                    <div>
+                        <h3 style="font-size: 16px; margin: 0; font-weight: 800;">تسجيل عميل جديد</h3>
+                        <span style="font-size: 11px; color: var(--text-muted);">إضافة بيانات العميل لربطه بالفاتورة الحالية ونقاط الولاء</span>
+                    </div>
+                </div>
+                <button type="button" class="btn-del" onclick="closeQuickCustomerModal()" title="إغلاق"><i data-lucide="x" class="icon-sm"></i></button>
+            </div>
+            <div class="modal-body" style="padding: 16px 20px; display: flex; flex-direction: column; gap: 12px;">
+                <div>
+                    <label class="form-label" style="font-size: 12px; font-weight: 700; display: block; margin-bottom: 4px;">اسم العميل <span style="color: #DC2626;">*</span></label>
+                    <input type="text" id="quickCustomerName" class="form-input" placeholder="الاسم الكامل للعميل..." style="width: 100%; height: 36px;">
+                </div>
+                <div>
+                    <label class="form-label" style="font-size: 12px; font-weight: 700; display: block; margin-bottom: 4px;">رقم الهاتف</label>
+                    <input type="tel" id="quickCustomerPhone" class="form-input" placeholder="010XXXXXXXX" style="width: 100%; height: 36px; direction: ltr; text-align: right;">
+                </div>
+                <div>
+                    <label class="form-label" style="font-size: 12px; font-weight: 700; display: block; margin-bottom: 4px;">ملاحظات / البريد</label>
+                    <input type="text" id="quickCustomerNotes" class="form-input" placeholder="اختياري..." style="width: 100%; height: 36px;">
+                </div>
+            </div>
+            <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 8px;">
+                <button type="button" class="btn-secondary" onclick="closeQuickCustomerModal()">إلغاء</button>
+                <button type="button" id="btnSubmitQuickCustomer" class="btn-primary" onclick="submitQuickCustomer()" style="display: inline-flex; align-items: center; gap: 6px;">
+                    <i data-lucide="check" class="icon-xs"></i>
+                    <span>حفظ وتثبيت العميل</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Manager Override Approval -->
+    <div id="modalManagerOverride" class="modal-backdrop" style="display: none;">
+        <div class="modal-card" style="max-width: 420px; width: 95%;">
+            <div class="modal-header">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <div style="background: #FEF3C7; color: #D97706; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                        <i data-lucide="shield-alert" class="icon-sm"></i>
+                    </div>
+                    <div>
+                        <h3 style="font-size: 16px; margin: 0; font-weight: 800;">تفويض وتصريح المدير</h3>
+                        <span style="font-size: 11px; color: var(--text-muted);" id="managerOverrideDesc">تجاوز نسبة الخصم المسموح بها للكاشير (أكثر من 5%)</span>
+                    </div>
+                </div>
+                <button type="button" class="btn-del" onclick="closeManagerOverrideModal()" title="إغلاق"><i data-lucide="x" class="icon-sm"></i></button>
+            </div>
+            <div class="modal-body" style="padding: 16px 20px; display: flex; flex-direction: column; gap: 12px;">
+                <p style="font-size: 12px; color: #475569; margin: 0; line-height: 1.5;">
+                    النسبة المطلوبة تتجاوز صلاحية الكاشير المحددة. يرجى إدخال بيانات حساب المدير أو المسؤول لمنح الصلاحية لهذه العملية:
+                </p>
+                <div>
+                    <label class="form-label" style="font-size: 12px; font-weight: 700; display: block; margin-bottom: 4px;">اسم مستخدم المدير</label>
+                    <input type="text" id="overrideManagerUser" class="form-input" placeholder="اسم المستخدم..." style="width: 100%; height: 36px;">
+                </div>
+                <div>
+                    <label class="form-label" style="font-size: 12px; font-weight: 700; display: block; margin-bottom: 4px;">كلمة مرور المدير</label>
+                    <input type="password" id="overrideManagerPass" class="form-input" placeholder="كلمة المرور..." style="width: 100%; height: 36px;">
+                </div>
+            </div>
+            <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 8px;">
+                <button type="button" class="btn-secondary" onclick="closeManagerOverrideModal()">إلغاء</button>
+                <button type="button" id="btnConfirmManagerOverride" class="btn-primary" onclick="confirmManagerOverride()" style="background: #D97706; border-color: #D97706; display: inline-flex; align-items: center; gap: 6px;">
+                    <i data-lucide="key" class="icon-xs"></i>
+                    <span>اعتماد التفويض</span>
                 </button>
             </div>
         </div>

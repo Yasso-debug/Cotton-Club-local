@@ -35,6 +35,7 @@ class PrinterService {
     generateReceiptHtml(invoice) {
         const store = this.getStoreInfo();
         const widthPx = store.paperWidth === '58mm' ? '280px' : '380px';
+        const isReturn = invoice.invoice_type === 'return';
 
         const linesHtml = invoice.lineItems.map(item => `
             <tr>
@@ -51,15 +52,30 @@ class PrinterService {
         const paymentMethodArabic = {
             cash: 'نقدي (كاش)',
             card: 'شبكة / بطاقة',
-            split: 'دفع مجزأ (نقدي + شبكة)'
+            transfer: 'تحويل بنكي / محفظة',
+            split: 'دفع مجزأ'
         }[invoice.payment_method] || invoice.payment_method;
+
+        let breakdownHtml = '';
+        if (invoice.payment_method === 'split' || (invoice.cash_amount > 0 && (invoice.card_amount > 0 || invoice.transfer_amount > 0))) {
+            const parts = [];
+            if (invoice.cash_amount > 0) parts.push(`نقدي: ${invoice.cash_amount.toFixed(2)} ${store.currency}`);
+            if (invoice.card_amount > 0) parts.push(`شبكة: ${invoice.card_amount.toFixed(2)} ${store.currency}`);
+            if (invoice.transfer_amount > 0) parts.push(`تحويل: ${invoice.transfer_amount.toFixed(2)} ${store.currency}`);
+            breakdownHtml = `<div style="font-size: 11px; color: #444; margin-top: 2px;">(${parts.join(' | ')})</div>`;
+        }
 
         return `
         <!DOCTYPE html>
         <html dir="rtl" lang="ar">
         <head>
             <meta charset="UTF-8">
+            <title>${isReturn ? 'إشعار مرتجع' : 'إيصال استلام'} - ${invoice.invoice_number}</title>
             <style>
+                @media print {
+                    @page { margin: 0; size: auto; }
+                    body { margin: 0; padding: 6px; }
+                }
                 body {
                     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
                     width: ${widthPx};
@@ -78,11 +94,22 @@ class PrinterService {
                 table { width: 100%; border-collapse: collapse; }
                 .totals-row { display: flex; justify-content: space-between; padding: 2px 0; }
                 .header-title { font-size: 16px; margin-bottom: 4px; }
+                .return-badge {
+                    display: inline-block;
+                    border: 2px solid #c00;
+                    color: #c00;
+                    font-weight: 900;
+                    padding: 3px 8px;
+                    margin: 4px 0;
+                    font-size: 13px;
+                    border-radius: 4px;
+                }
             </style>
         </head>
         <body>
             <div class="text-center">
                 <div class="bold header-title">${store.name}</div>
+                ${isReturn ? '<div class="return-badge">*** إشعار مرتجع مبيعات ***</div>' : '<div style="font-size: 13px; font-weight: bold;">فاتورة مبيعات نقدية</div>'}
                 ${store.address ? `<div>${store.address}</div>` : ''}
                 ${store.phone ? `<div>هاتف: ${store.phone}</div>` : ''}
                 ${store.taxNumber ? `<div>الرقم الضريبي: ${store.taxNumber}</div>` : ''}
@@ -106,6 +133,12 @@ class PrinterService {
                 <span>رقم الوردية:</span>
                 <span>${invoice.session_code || '-'}</span>
             </div>
+            ${invoice.customer_name ? `
+            <div class="totals-row">
+                <span>العميل:</span>
+                <span class="bold">${invoice.customer_name} ${invoice.customer_phone ? `(${invoice.customer_phone})` : ''}</span>
+            </div>
+            ` : ''}
 
             <div class="double-divider"></div>
 
@@ -135,20 +168,21 @@ class PrinterService {
                 <span>-${invoice.discount_amount.toFixed(2)} ${store.currency}</span>
             </div>
             ` : ''}
-            <div class="totals-row bold" style="font-size: 15px; margin-top: 4px;">
-                <span>الصافي المطلوب:</span>
+            <div class="totals-row bold" style="font-size: 15px; margin-top: 4px; ${isReturn ? 'color: #c00;' : ''}">
+                <span>${isReturn ? 'المبلغ المرتجع للمشتري:' : 'الصافي المطلوب:'}</span>
                 <span>${invoice.final_total.toFixed(2)} ${store.currency}</span>
             </div>
-            <div class="totals-row">
+            <div class="totals-row" style="margin-top: 4px;">
                 <span>طريقة الدفع:</span>
-                <span>${paymentMethodArabic}</span>
+                <span class="bold">${paymentMethodArabic}</span>
             </div>
+            ${breakdownHtml}
 
             <div class="double-divider"></div>
 
             <div class="text-center" style="font-size: 11px; margin-top: 10px;">
                 <div>${store.footer}</div>
-                <div style="margin-top: 6px; font-size: 10px; color: #666;">نظام إدارة المبيعات والمخزون المحلي</div>
+                <div style="margin-top: 6px; font-size: 10px; color: #666;">Cotton Club Retail System</div>
             </div>
         </body>
         </html>

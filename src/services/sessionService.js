@@ -70,27 +70,31 @@ class SessionService {
             throw new Error('الوردية غير موجودة');
         }
 
-        // 1. Sales totals
+        // 1. Sales & Returns totals
         const salesStats = this.db.get(
             `SELECT 
                 COUNT(*) as total_invoices,
-                COALESCE(SUM(final_total), 0) as total_sales,
+                COALESCE(SUM(CASE WHEN invoice_type != 'return' THEN final_total ELSE 0 END), 0) as total_sales,
+                COALESCE(SUM(CASE WHEN invoice_type = 'return' THEN final_total ELSE 0 END), 0) as total_returns,
                 COALESCE(SUM(discount_amount), 0) as total_discounts,
-                COALESCE(SUM(total_cost), 0) as total_cost,
-                COALESCE(SUM(CASE WHEN payment_method = 'cash' THEN final_total ELSE 0 END), 0) as direct_cash_sales,
-                COALESCE(SUM(CASE WHEN payment_method = 'card' THEN final_total ELSE 0 END), 0) as direct_card_sales,
-                COALESCE(SUM(CASE WHEN payment_method = 'split' THEN final_total ELSE 0 END), 0) as split_sales
+                COALESCE(SUM(CASE WHEN invoice_type != 'return' THEN total_cost ELSE -total_cost END), 0) as net_cost,
+                COALESCE(SUM(CASE WHEN invoice_type != 'return' THEN cash_amount ELSE 0 END), 0) as cash_sales,
+                COALESCE(SUM(CASE WHEN invoice_type = 'return' THEN cash_amount ELSE 0 END), 0) as cash_returns,
+                COALESCE(SUM(CASE WHEN invoice_type != 'return' THEN card_amount ELSE 0 END), 0) as card_sales,
+                COALESCE(SUM(CASE WHEN invoice_type = 'return' THEN card_amount ELSE 0 END), 0) as card_returns,
+                COALESCE(SUM(CASE WHEN invoice_type != 'return' THEN transfer_amount ELSE 0 END), 0) as transfer_sales,
+                COALESCE(SUM(CASE WHEN invoice_type = 'return' THEN transfer_amount ELSE 0 END), 0) as transfer_returns
              FROM sales_invoices
              WHERE session_id = ? AND status = 'completed'`,
             [sessionId]
         );
 
-        // 2. Split payment sales
+        // Fallback for older invoices that had payment_method = 'split' and split tables
         const splitCash = this.db.get(
             `SELECT COALESCE(SUM(ps.amount), 0) as split_cash
              FROM payment_splits ps
              JOIN sales_invoices si ON ps.invoice_id = si.id
-             WHERE si.session_id = ? AND si.status = 'completed' AND ps.method = 'cash'`,
+             WHERE si.session_id = ? AND si.status = 'completed' AND ps.method = 'cash' AND si.cash_amount = 0`,
             [sessionId]
         );
 
@@ -98,12 +102,21 @@ class SessionService {
             `SELECT COALESCE(SUM(ps.amount), 0) as split_card
              FROM payment_splits ps
              JOIN sales_invoices si ON ps.invoice_id = si.id
-             WHERE si.session_id = ? AND si.status = 'completed' AND ps.method = 'card'`,
+             WHERE si.session_id = ? AND si.status = 'completed' AND ps.method = 'card' AND si.card_amount = 0`,
             [sessionId]
         );
 
-        const totalCashSales = (salesStats?.direct_cash_sales || 0) + (splitCash?.split_cash || 0);
-        const totalCardSales = (salesStats?.direct_card_sales || 0) + (splitCard?.split_card || 0);
+        const totalCashSales = (salesStats?.cash_sales || 0) + (splitCash?.split_cash || 0);
+        const totalCashReturns = salesStats?.cash_returns || 0;
+        const netCashSales = totalCashSales - totalCashReturns;
+
+        const totalCardSales = (salesStats?.card_sales || 0) + (splitCard?.split_card || 0);
+        const totalCardReturns = salesStats?.card_returns || 0;
+        const netCardSales = totalCardSales - totalCardReturns;
+
+        const totalTransferSales = salesStats?.transfer_sales || 0;
+        const totalTransferReturns = salesStats?.transfer_returns || 0;
+        const netTransferSales = totalTransferSales - totalTransferReturns;
 
         // 3. Petty expenses paid from drawer
         const expenses = this.db.get(
@@ -121,30 +134,43 @@ class SessionService {
             [sessionId]
         );
 
-        // Invariant: Expected Cash = Opening Cash + Cash Sales - Expenses - Supplier Cash Payments
-        const expectedCash = (session.opening_cash || 0) + totalCashSales - (expenses?.total_expenses || 0) - (supplierPayments?.total_supplier_payments || 0);
-        const netProfit = (salesStats?.total_sales || 0) - (salesStats?.total_cost || 0) - (expenses?.total_expenses || 0);
+        // Invariant: Expected Drawer Cash = Opening Cash + Cash Sales - Cash Returns - Expenses - Supplier Cash Payments
+        const expectedCash = (session.opening_cash || 0) + netCashSales - (expenses?.total_expenses || 0) - (supplierPayments?.total_supplier_payments || 0);
+        const netSales = (salesStats?.total_sales || 0) - (salesStats?.total_returns || 0);
+        const netProfit = netSales - (salesStats?.net_cost || 0) - (expenses?.total_expenses || 0);
 
         return {
             session,
             openingCash: session.opening_cash,
             totalInvoices: salesStats?.total_invoices || 0,
             totalSales: salesStats?.total_sales || 0,
+            totalReturns: salesStats?.total_returns || 0,
+            netSales,
             totalDiscounts: salesStats?.total_discounts || 0,
-            totalCost: salesStats?.total_cost || 0,
+            totalCost: salesStats?.net_cost || 0,
             netProfit,
-            directCashSales: salesStats?.direct_cash_sales || 0,
-            directCardSales: salesStats?.direct_card_sales || 0,
-            splitSales: salesStats?.split_sales || 0,
             totalCashSales,
+            totalCashReturns,
+            netCashSales,
             totalCardSales,
-            splitCash: splitCash?.split_cash || 0,
-            splitCard: splitCard?.split_card || 0,
+            totalCardReturns,
+            netCardSales,
+            totalTransferSales,
+            totalTransferReturns,
+            netTransferSales,
             totalExpenses: expenses?.total_expenses || 0,
             expenseCount: expenses?.expense_count || 0,
             totalSupplierPayments: supplierPayments?.total_supplier_payments || 0,
             expectedCash: Math.round(expectedCash * 100) / 100
         };
+    }
+
+    /**
+     * Get current real-time drawer cash balance for active session
+     */
+    getCurrentDrawerCash(sessionId) {
+        const summary = this.getSessionSummary(sessionId);
+        return summary.expectedCash;
     }
 
     /**
