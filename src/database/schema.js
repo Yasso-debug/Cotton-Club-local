@@ -222,13 +222,17 @@ CREATE TABLE IF NOT EXISTS app_settings (
 -- 15. Central Treasury (Main Safe Transactions)
 CREATE TABLE IF NOT EXISTS central_treasury_transactions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    transaction_type TEXT NOT NULL CHECK(transaction_type IN ('deposit', 'withdraw', 'shift_transfer', 'salary_payout')),
+    transaction_type TEXT NOT NULL,
     amount REAL NOT NULL CHECK(amount > 0),
+    payment_method TEXT NOT NULL DEFAULT 'cash',
     source_destination TEXT NOT NULL,
     session_id INTEGER REFERENCES daily_sessions(id),
     reference_id TEXT,
     notes TEXT,
     performed_by INTEGER NOT NULL REFERENCES users(id),
+    cash_amount REAL NOT NULL DEFAULT 0,
+    card_amount REAL NOT NULL DEFAULT 0,
+    transfer_amount REAL NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 
@@ -239,6 +243,7 @@ CREATE TABLE IF NOT EXISTS employees (
     full_name TEXT NOT NULL,
     job_title TEXT NOT NULL,
     phone TEXT,
+    branch TEXT DEFAULT 'المقر الرئيسي',
     basic_salary REAL NOT NULL DEFAULT 0 CHECK(basic_salary >= 0),
     is_active INTEGER NOT NULL DEFAULT 1 CHECK(is_active IN (0, 1)),
     hire_date TEXT NOT NULL DEFAULT (date('now', 'localtime')),
@@ -254,6 +259,19 @@ CREATE TABLE IF NOT EXISTS salary_payments (
     payment_type TEXT NOT NULL CHECK(payment_type IN ('salary', 'advance', 'bonus', 'deduction')),
     payment_source TEXT NOT NULL CHECK(payment_source IN ('treasury', 'drawer')),
     session_id INTEGER REFERENCES daily_sessions(id),
+    basic_salary REAL NOT NULL DEFAULT 0,
+    advances_deducted REAL NOT NULL DEFAULT 0,
+    penalties_deducted REAL NOT NULL DEFAULT 0,
+    penalty_reason TEXT,
+    bonuses_added REAL NOT NULL DEFAULT 0,
+    bonus_reason TEXT,
+    net_amount REAL NOT NULL DEFAULT 0,
+    payment_method TEXT DEFAULT 'cash',
+    deduct_source TEXT DEFAULT 'main_safe',
+    period_month TEXT,
+    period_type TEXT DEFAULT 'month',
+    period_start TEXT,
+    period_end TEXT,
     notes TEXT,
     paid_by INTEGER NOT NULL REFERENCES users(id),
     paid_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
@@ -297,6 +315,24 @@ CREATE TABLE IF NOT EXISTS audit_log (
     created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 
+-- 20. Inventory Movements Audit Log (Full Stock Traceability)
+CREATE TABLE IF NOT EXISTS inventory_movements (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    product_id INTEGER NOT NULL REFERENCES products(id),
+    movement_type TEXT NOT NULL CHECK(movement_type IN ('sale_out', 'return_in', 'purchase_in', 'purchase_return_out', 'adjustment_in', 'adjustment_out', 'opening_stock')),
+    quantity REAL NOT NULL,
+    stock_before REAL NOT NULL,
+    stock_after REAL NOT NULL,
+    unit_cost REAL NOT NULL DEFAULT 0,
+    reference_type TEXT NOT NULL,
+    reference_id INTEGER NOT NULL,
+    reference_number TEXT,
+    session_id INTEGER REFERENCES daily_sessions(id),
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    notes TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+
 -- Schema Migrations Tracking
 CREATE TABLE IF NOT EXISTS schema_migrations (
     version INTEGER PRIMARY KEY,
@@ -325,6 +361,9 @@ CREATE INDEX IF NOT EXISTS idx_splits_invoice ON payment_splits(invoice_id);
 CREATE INDEX IF NOT EXISTS idx_purchase_lines_invoice ON purchase_line_items(purchase_invoice_id);
 CREATE INDEX IF NOT EXISTS idx_supplier_payments_session ON supplier_payments(session_id, payment_method);
 CREATE INDEX IF NOT EXISTS idx_sales_date_expr ON sales_invoices(date(created_at), status);
+CREATE INDEX IF NOT EXISTS idx_inv_mov_product ON inventory_movements(product_id);
+CREATE INDEX IF NOT EXISTS idx_inv_mov_type ON inventory_movements(movement_type);
+CREATE INDEX IF NOT EXISTS idx_inv_mov_ref ON inventory_movements(reference_type, reference_id);
 `;
 
 module.exports = { SCHEMA_SQL };

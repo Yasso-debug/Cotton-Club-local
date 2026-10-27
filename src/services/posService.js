@@ -19,54 +19,103 @@ class PosService {
      */
     findProductByBarcode(barcode) {
         if (!barcode) return null;
+        const clean = String(barcode).trim();
+        const idNum = isNaN(Number(clean)) ? -1 : Number(clean);
         return this.db.get(
             `SELECT p.*, c.name as category_name
              FROM products p
              LEFT JOIN categories c ON p.category_id = c.id
-             WHERE (p.barcode = ? OR p.product_code = ?) AND p.is_active = 1`,
-            [barcode.trim(), barcode.trim()]
+             WHERE (p.barcode = ? OR p.product_code = ? OR p.id = ?) AND (p.is_active = 1 OR p.is_active IS NULL)`,
+            [clean, clean, idNum]
         );
     }
 
     /**
-     * Search products by barcode, product_code or item name (instant search)
+     * Search products by barcode, product_code, item name, brand or category with live stock (instant search)
      */
-    searchProducts(keyword, limit = 20) {
-        if (!keyword || keyword.trim() === '') {
-            return this.db.all(
-                `SELECT p.*, c.name as category_name
-                 FROM products p
-                 LEFT JOIN categories c ON p.category_id = c.id
-                 WHERE p.is_active = 1
-                 ORDER BY p.item_name ASC LIMIT ?`,
-                [limit]
-            );
+    searchProducts(keyword, limit = 100, categoryId = null) {
+        let sql = `
+            SELECT p.*, c.name as category_name
+            FROM products p
+            LEFT JOIN categories c ON p.category_id = c.id
+            WHERE (p.is_active = 1 OR p.is_active IS NULL)
+        `;
+        const params = [];
+
+        if (categoryId && categoryId !== 'all') {
+            sql += ' AND p.category_id = ?';
+            params.push(Number(categoryId));
         }
 
-        const query = `%${keyword.trim()}%`;
-        return this.db.all(
-            `SELECT p.*, c.name as category_name
-             FROM products p
-             LEFT JOIN categories c ON p.category_id = c.id
-             WHERE p.is_active = 1 AND (p.barcode LIKE ? OR p.product_code LIKE ? OR p.item_name LIKE ?)
-             ORDER BY p.item_name ASC LIMIT ?`,
-            [query, query, query, limit]
-        );
+        if (keyword && String(keyword).trim() !== '') {
+            const raw = String(keyword).trim();
+            const query = `%${raw}%`;
+            const normKeyword = raw
+                .replace(/[أإآ]/g, 'ا')
+                .replace(/ة/g, 'ه')
+                .replace(/ى/g, 'ي')
+                .replace(/[\u064B-\u065F]/g, '');
+            const normQuery = `%${normKeyword}%`;
+
+            const normItemSql = `REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(p.item_name, ''), 'أ', 'ا'), 'إ', 'ا'), 'آ', 'ا'), 'ة', 'ه'), 'ى', 'ي')`;
+            const normBrandSql = `REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(p.brand, ''), 'أ', 'ا'), 'إ', 'ا'), 'آ', 'ا'), 'ة', 'ه'), 'ى', 'ي')`;
+            const normCatSql = `REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(c.name, ''), 'أ', 'ا'), 'إ', 'ا'), 'آ', 'ا'), 'ة', 'ه'), 'ى', 'ي')`;
+
+            sql += ` AND (
+                p.barcode LIKE ? OR 
+                p.product_code LIKE ? OR 
+                p.item_name LIKE ? OR 
+                p.brand LIKE ? OR 
+                c.name LIKE ? OR 
+                ${normItemSql} LIKE ? OR 
+                ${normBrandSql} LIKE ? OR 
+                ${normCatSql} LIKE ?
+            )`;
+            params.push(query, query, query, query, query, normQuery, normQuery, normQuery);
+        }
+
+        sql += ' ORDER BY p.current_stock DESC, p.item_name ASC LIMIT ?';
+        params.push(Number(limit) || 100);
+
+        return this.db.all(sql, params);
     }
 
     /**
-     * Search customers by name or phone
+     * Search customers by ID, name, or phone (strictly unique)
      */
     searchCustomers(keyword, limit = 20) {
         if (!keyword || keyword.trim() === '') {
             return this.db.all(
-                `SELECT * FROM customers ORDER BY total_spent DESC, id DESC LIMIT ?`,
+                `SELECT *, 'CUST-' || printf('%04d', id) as customer_code 
+                 FROM customers 
+                 ORDER BY total_spent DESC, id DESC LIMIT ?`,
                 [limit]
             );
         }
-        const query = `%${keyword.trim()}%`;
+        const trimmed = keyword.trim();
+        // Check if keyword is numeric ID or CUST-XXXX
+        let idSearch = null;
+        const custMatch = trimmed.match(/^CUST-(\d+)$/i);
+        if (custMatch) {
+            idSearch = parseInt(custMatch[1], 10);
+        } else if (/^\d+$/.test(trimmed) && trimmed.length <= 6) {
+            idSearch = parseInt(trimmed, 10);
+        }
+
+        const query = `%${trimmed}%`;
+        if (idSearch !== null) {
+            return this.db.all(
+                `SELECT *, 'CUST-' || printf('%04d', id) as customer_code 
+                 FROM customers 
+                 WHERE id = ? OR name LIKE ? OR phone LIKE ? 
+                 ORDER BY (id = ?) DESC, total_spent DESC, id DESC LIMIT ?`,
+                [idSearch, query, query, idSearch, limit]
+            );
+        }
+
         return this.db.all(
-            `SELECT * FROM customers 
+            `SELECT *, 'CUST-' || printf('%04d', id) as customer_code 
+             FROM customers 
              WHERE name LIKE ? OR phone LIKE ? 
              ORDER BY total_spent DESC, id DESC LIMIT ?`,
             [query, query, limit]
@@ -77,22 +126,186 @@ class PosService {
      * Quick register customer during POS checkout
      */
     quickCreateCustomer(data) {
+        return this.createCustomer(data);
+    }
+
+    /**
+     * Complete customer listing with aggregate stats and filters
+     */
+    listCustomers({ query = '', sortBy = 'spent_desc', limit = 200, offset = 0 } = {}) {
+        let sql = `
+            SELECT 
+                c.id,
+                c.name,
+                c.phone,
+                c.email,
+                c.points,
+                c.total_spent,
+                c.notes,
+                c.created_at,
+                COUNT(si.id) as invoices_count,
+                MAX(si.created_at) as last_invoice_date
+            FROM customers c
+            LEFT JOIN sales_invoices si ON si.customer_id = c.id AND si.status = 'completed'
+        `;
+        const params = [];
+
+        if (query && query.trim() !== '') {
+            const q = `%${query.trim()}%`;
+            sql += ` WHERE (c.name LIKE ? OR c.phone LIKE ? OR c.email LIKE ? OR c.notes LIKE ?) `;
+            params.push(q, q, q, q);
+        }
+
+        sql += ` GROUP BY c.id `;
+
+        if (sortBy === 'spent_desc') {
+            sql += ` ORDER BY c.total_spent DESC, c.id DESC `;
+        } else if (sortBy === 'spent_asc') {
+            sql += ` ORDER BY c.total_spent ASC, c.id DESC `;
+        } else if (sortBy === 'name_asc') {
+            sql += ` ORDER BY c.name ASC `;
+        } else if (sortBy === 'newest') {
+            sql += ` ORDER BY c.id DESC `;
+        } else if (sortBy === 'invoices_desc') {
+            sql += ` ORDER BY invoices_count DESC, c.id DESC `;
+        } else {
+            sql += ` ORDER BY c.total_spent DESC, c.id DESC `;
+        }
+
+        sql += ` LIMIT ? OFFSET ? `;
+        params.push(Number(limit) || 200, Number(offset) || 0);
+
+        return this.db.all(sql, params);
+    }
+
+    /**
+     * Summary KPIs for Customers Directory
+     */
+    getCustomerStats() {
+        const stats = this.db.get(`
+            SELECT 
+                COUNT(*) as total_customers,
+                COALESCE(SUM(total_spent), 0) as total_spent,
+                COALESCE(AVG(total_spent), 0) as avg_spent
+            FROM customers
+        `) || { total_customers: 0, total_spent: 0, avg_spent: 0 };
+
+        const activeWithInvoices = this.db.get(`
+            SELECT COUNT(DISTINCT customer_id) as count 
+            FROM sales_invoices 
+            WHERE customer_id IS NOT NULL AND status = 'completed'
+        `);
+
+        return {
+            totalCustomers: stats.total_customers || 0,
+            totalSpent: stats.total_spent || 0,
+            avgSpent: stats.avg_spent || 0,
+            customersWithInvoices: activeWithInvoices?.count || 0
+        };
+    }
+
+    /**
+     * Create new customer with strict uniqueness checks (phone and name)
+     * Returns existing customer record if already registered to guarantee uniqueness.
+     */
+    createCustomer(data) {
         const { name, phone, email, notes } = data || {};
         if (!name || !name.trim()) {
             throw new Error('اسم العميل مطلوب');
         }
+        const cleanName = name.trim();
         const cleanPhone = phone && phone.trim() ? phone.trim() : null;
+
+        // 1. Check uniqueness by phone
         if (cleanPhone) {
-            const existing = this.db.get('SELECT * FROM customers WHERE phone = ?', [cleanPhone]);
-            if (existing) {
-                return existing;
+            const existingByPhone = this.db.get('SELECT * FROM customers WHERE phone = ?', [cleanPhone]);
+            if (existingByPhone) {
+                return existingByPhone;
             }
         }
+
+        // 2. Check uniqueness by name (case-insensitive & trimmed)
+        const existingByName = this.db.get('SELECT * FROM customers WHERE LOWER(TRIM(name)) = LOWER(?)', [cleanName]);
+        if (existingByName) {
+            if (cleanPhone && !existingByName.phone) {
+                this.db.run('UPDATE customers SET phone = ? WHERE id = ?', [cleanPhone, existingByName.id]);
+                existingByName.phone = cleanPhone;
+            }
+            return existingByName;
+        }
+
         const res = this.db.run(
             `INSERT INTO customers (name, phone, email, notes) VALUES (?, ?, ?, ?)`,
-            [name.trim(), cleanPhone, email ? email.trim() : null, notes ? notes.trim() : null]
+            [cleanName, cleanPhone, email ? email.trim() : null, notes ? notes.trim() : null]
         );
-        return this.db.get('SELECT * FROM customers WHERE id = ?', [res.lastInsertRowid]);
+        return this.db.get("SELECT *, 'CUST-' || printf('%04d', id) as customer_code FROM customers WHERE id = ?", [res.lastInsertRowid]);
+    }
+
+    /**
+     * Update customer details
+     */
+    updateCustomer(id, data) {
+        if (!id) throw new Error('معرف العميل غير صالح');
+        const existing = this.db.get('SELECT * FROM customers WHERE id = ?', [id]);
+        if (!existing) throw new Error('العميل غير موجود');
+
+        const { name, phone, email, notes, points } = data || {};
+        if (!name || !name.trim()) throw new Error('اسم العميل مطلوب');
+
+        const cleanPhone = phone && phone.trim() ? phone.trim() : null;
+        if (cleanPhone) {
+            const duplicate = this.db.get('SELECT * FROM customers WHERE phone = ? AND id != ?', [cleanPhone, id]);
+            if (duplicate) throw new Error('رقم الهاتف مستخدم بالفعل لعميل آخر');
+        }
+
+        this.db.run(
+            `UPDATE customers 
+             SET name = ?, phone = ?, email = ?, notes = ?, points = COALESCE(?, points) 
+             WHERE id = ?`,
+            [
+                name.trim(),
+                cleanPhone,
+                email ? email.trim() : null,
+                notes ? notes.trim() : null,
+                points !== undefined ? Number(points) : existing.points,
+                id
+            ]
+        );
+        return this.db.get('SELECT * FROM customers WHERE id = ?', [id]);
+    }
+
+    /**
+     * Delete customer safely
+     */
+    deleteCustomer(id) {
+        if (!id) throw new Error('معرف العميل غير صالح');
+        // Unlink from invoices instead of cascading delete
+        this.db.run('UPDATE sales_invoices SET customer_id = NULL WHERE customer_id = ?', [id]);
+        return this.db.run('DELETE FROM customers WHERE id = ?', [id]);
+    }
+
+    /**
+     * Fetch invoices history for a single customer
+     */
+    getCustomerInvoices(customerId, limit = 50) {
+        if (!customerId) return [];
+        return this.db.all(
+            `SELECT 
+                si.id,
+                si.invoice_number,
+                si.invoice_type,
+                si.final_total,
+                si.payment_method,
+                si.status,
+                si.created_at,
+                u.display_name as cashier_name
+             FROM sales_invoices si
+             LEFT JOIN users u ON u.id = si.user_id
+             WHERE si.customer_id = ?
+             ORDER BY si.id DESC
+             LIMIT ?`,
+            [customerId, limit]
+        );
     }
 
     /**
@@ -103,17 +316,43 @@ class PosService {
     }
 
     /**
-     * Generate unique sequential invoice number
+     * Generate unique sequential invoice number that continuously increments across days
      */
     generateInvoiceNumber(type = 'sale') {
         const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
         const prefix = type === 'return' ? `RET-${today}-` : `INV-${today}-`;
-        const countRow = this.db.get(
-            "SELECT COUNT(*) as count FROM sales_invoices WHERE invoice_number LIKE ?",
-            [`${prefix}%`]
+        
+        let nextNum = 1;
+        
+        // Find the most recent invoice of this type to continue the sequence seamlessly across days
+        const lastRow = this.db.get(
+            "SELECT invoice_number FROM sales_invoices WHERE invoice_type = ? ORDER BY id DESC LIMIT 1",
+            [type]
         );
-        const seq = String((countRow?.count || 0) + 1).padStart(4, '0');
-        return `${prefix}${seq}`;
+        
+        if (lastRow?.invoice_number) {
+            const parts = String(lastRow.invoice_number).split('-');
+            const lastSeq = parseInt(parts[parts.length - 1], 10);
+            if (!isNaN(lastSeq) && lastSeq > 0) {
+                nextNum = lastSeq + 1;
+            }
+        }
+        
+        // Build candidate and guarantee uniqueness against any existing record
+        let candidate = `${prefix}${String(nextNum).padStart(4, '0')}`;
+        while (this.db.get("SELECT id FROM sales_invoices WHERE invoice_number = ?", [candidate])) {
+            nextNum++;
+            candidate = `${prefix}${String(nextNum).padStart(4, '0')}`;
+        }
+        
+        return candidate;
+    }
+
+    /**
+     * Get next upcoming sequential invoice number for preview
+     */
+    getNextInvoiceNumber(type = 'sale') {
+        return this.generateInvoiceNumber(type);
     }
 
     /**
@@ -137,14 +376,18 @@ class PosService {
             managerOverride = null  // { username, password }
         } = saleData;
 
-        // 1. Session check
-        const session = this.db.get(
-            "SELECT id, status FROM daily_sessions WHERE id = ? AND status = 'open'",
-            [sessionId]
-        );
-        if (!session) {
-            throw new Error('لا يمكن البيع: الوردية اليومية مغلقة أو غير موجودة');
+        // 1. Session check - seamless continuous session support
+        let activeSession = null;
+        if (sessionId) {
+            activeSession = this.db.get(
+                "SELECT id, status FROM daily_sessions WHERE id = ? AND status = 'open'",
+                [sessionId]
+            );
         }
+        if (!activeSession) {
+            activeSession = this.sessionService.ensureActiveSession(userId);
+        }
+        const effectiveSessionId = activeSession ? activeSession.id : sessionId;
 
         // 2. Items check
         if (!items || items.length === 0) {
@@ -163,8 +406,23 @@ class PosService {
             }
         }
 
-        // 4. Discount ceiling check (Cashier default <= 5%)
+        // 4. Return and Discount permissions check for cashiers
+        if (invoiceType === 'return' && userRole === 'cashier') {
+            const allowReturns = this.db.get("SELECT value FROM app_settings WHERE key = 'allow_salesperson_returns'")?.value;
+            if (allowReturns === '0' && (!managerOverride || !managerOverride.username || !managerOverride.password)) {
+                throw new Error('إجراء المرتجعات قاصر على المشرفين وفق سياسة النظام. يلزم تفويض المشرف.');
+            }
+        }
+
         const percent = Number(discountPercent) || 0;
+        if (userRole === 'cashier' && percent > 0) {
+            const allowDiscount = this.db.get("SELECT value FROM app_settings WHERE key = 'allow_salesperson_discount'")?.value;
+            if (allowDiscount === '0' && (!managerOverride || !managerOverride.username || !managerOverride.password)) {
+                throw new Error('منح الخصم المباشر مقفل لحسابات البائعين وفق سياسة النظام. يلزم تفويض المشرف.');
+            }
+        }
+
+        // 5. Discount ceiling check (Cashier default <= 5%)
         const maxCashierDiscountSetting = this.db.get(
             "SELECT value FROM app_settings WHERE key = 'cashier_max_discount_percent'"
         );
@@ -280,7 +538,7 @@ class PosService {
 
             // 6. Cash Drawer Safety check in Return mode
             if (invoiceType === 'return' && cashAmount > 0) {
-                const currentDrawerCash = this.sessionService.getCurrentDrawerCash(sessionId);
+                const currentDrawerCash = this.sessionService.getCurrentDrawerCash(effectiveSessionId);
                 if (cashAmount > currentDrawerCash) {
                     throw new Error(
                         `لا يتوفر رصيد نقدي كافٍ في الخزينة لصرف المرتجع. الرصيد النقدي المتاح في الدرج: ${currentDrawerCash.toFixed(2)} ج.م، بينما المطلوب صرفه: ${cashAmount.toFixed(2)} ج.م.`
@@ -288,8 +546,58 @@ class PosService {
                 }
             }
 
+            // 6.5 Automatic Customer Directory Synchronization (Strict Uniqueness: Never Duplicate)
+            let effectiveCustomerId = customerId ? Number(customerId) : null;
+            const cleanName = customerName && String(customerName).trim() ? String(customerName).trim() : null;
+            const cleanPhone = customerPhone && String(customerPhone).trim() ? String(customerPhone).trim() : null;
+
+            if (cleanPhone || cleanName || effectiveCustomerId) {
+                let existingCustomer = null;
+                if (effectiveCustomerId) {
+                    existingCustomer = db.get('SELECT * FROM customers WHERE id = ?', [effectiveCustomerId]);
+                }
+                if (!existingCustomer && cleanPhone) {
+                    existingCustomer = db.get('SELECT * FROM customers WHERE phone = ?', [cleanPhone]);
+                }
+                if (!existingCustomer && cleanName) {
+                    existingCustomer = db.get('SELECT * FROM customers WHERE LOWER(TRIM(name)) = LOWER(?)', [cleanName]);
+                }
+
+                const spentDelta = invoiceType === 'sale' ? finalTotal : -finalTotal;
+                const pointsDelta = invoiceType === 'sale' ? Math.floor(finalTotal / 10) : 0;
+
+                if (existingCustomer) {
+                    effectiveCustomerId = existingCustomer.id;
+                    db.run(
+                        `UPDATE customers 
+                         SET total_spent = MAX(0, total_spent + ?),
+                             points = MAX(0, points + ?),
+                             name = COALESCE(NULLIF(?, ''), name),
+                             phone = COALESCE(phone, ?)
+                         WHERE id = ?`,
+                        [spentDelta, pointsDelta, cleanName || '', cleanPhone || null, existingCustomer.id]
+                    );
+                } else if (cleanName || cleanPhone) {
+                    const insCust = db.run(
+                        `INSERT INTO customers (name, phone, points, total_spent, notes) 
+                         VALUES (?, ?, ?, ?, ?)`,
+                        [
+                            cleanName || (cleanPhone ? `عميل (${cleanPhone})` : 'عميل نقدي'),
+                            cleanPhone,
+                            Math.max(0, pointsDelta),
+                            Math.max(0, spentDelta),
+                            'تم التسجيل تلقائياً من نقطة البيع'
+                        ]
+                    );
+                    effectiveCustomerId = insCust.lastInsertRowid;
+                }
+            }
+
             // 7. Create invoice
             const invoiceNumber = this.generateInvoiceNumber(invoiceType);
+            const savedCustName = cleanName || (effectiveCustomerId ? db.get('SELECT name FROM customers WHERE id = ?', [effectiveCustomerId])?.name : null);
+            const savedCustPhone = cleanPhone || (effectiveCustomerId ? db.get('SELECT phone FROM customers WHERE id = ?', [effectiveCustomerId])?.phone : null);
+
             const invoiceInsert = db.run(
                 `INSERT INTO sales_invoices (
                     invoice_number, invoice_type, session_id, user_id, customer_id,
@@ -300,11 +608,11 @@ class PosService {
                 [
                     invoiceNumber,
                     invoiceType,
-                    sessionId,
+                    effectiveSessionId,
                     userId,
-                    customerId || null,
-                    customerName ? customerName.trim() : null,
-                    customerPhone ? customerPhone.trim() : null,
+                    effectiveCustomerId || null,
+                    savedCustName || null,
+                    savedCustPhone || null,
                     subtotal,
                     computedDiscountAmount,
                     percent,
@@ -341,17 +649,47 @@ class PosService {
                 );
 
                 // Update stock based on Sale (-) or Return (+)
+                const stockBefore = line.currentStock;
+                let stockAfter = stockBefore;
+                let movementType = 'sale_out';
+
                 if (invoiceType === 'return') {
+                    stockAfter = stockBefore + line.quantity;
+                    movementType = 'return_in';
                     db.run(
                         "UPDATE products SET current_stock = current_stock + ?, updated_at = datetime('now', 'localtime') WHERE id = ?",
                         [line.quantity, line.productId]
                     );
                 } else {
+                    stockAfter = stockBefore - line.quantity;
+                    movementType = 'sale_out';
                     db.run(
                         "UPDATE products SET current_stock = current_stock - ?, updated_at = datetime('now', 'localtime') WHERE id = ?",
                         [line.quantity, line.productId]
                     );
                 }
+
+                // Log movement into inventory_movements
+                db.run(
+                    `INSERT INTO inventory_movements (
+                        product_id, movement_type, quantity, stock_before, stock_after,
+                        unit_cost, reference_type, reference_id, reference_number,
+                        session_id, user_id, notes
+                    ) VALUES (?, ?, ?, ?, ?, ?, 'sales_invoices', ?, ?, ?, ?, ?)`,
+                    [
+                        line.productId,
+                        movementType,
+                        line.quantity,
+                        stockBefore,
+                        stockAfter,
+                        line.costPrice,
+                        invoiceId,
+                        invoiceNumber,
+                        effectiveSessionId,
+                        userId,
+                        invoiceType === 'return' ? `مرتجع مبيعات فاتورة ${invoiceNumber}` : `فاتورة مبيعات ${invoiceNumber}`
+                    ]
+                );
             }
 
             // 9. Payment splits record
@@ -554,41 +892,41 @@ class PosService {
             invParams.push(q, q);
         }
 
-        // 1. Sales stats matching active filters
+        // 1. Sales stats matching active filters (Sales minus Returns)
         const salesStats = this.db.get(
             `SELECT 
                 COUNT(*) as total_invoices,
-                COALESCE(SUM(si.final_total), 0) as total_sales
+                COALESCE(SUM(CASE WHEN si.invoice_type = 'return' THEN -si.final_total ELSE si.final_total END), 0) as total_sales
              FROM sales_invoices si
              ${invWhere} AND si.status = 'completed'`,
             invParams
         );
 
-        // 2. Pieces stats matching active filters
+        // 2. Pieces stats matching active filters (Pieces sold minus returned)
         const piecesStats = this.db.get(
-            `SELECT COALESCE(SUM(sli.quantity), 0) as total_pieces
+            `SELECT COALESCE(SUM(CASE WHEN si.invoice_type = 'return' THEN -sli.quantity ELSE sli.quantity END), 0) as total_pieces
              FROM sale_line_items sli
              JOIN sales_invoices si ON sli.invoice_id = si.id
              ${invWhere} AND si.status = 'completed'`,
             invParams
         );
 
-        // 3. Expenses stats in date period
+        // 3. Expenses stats in date period (net of returned expenses)
         const expenseStats = this.db.get(
             `SELECT 
-                COALESCE(SUM(amount), 0) as total_expenses,
+                COALESCE(SUM(CASE WHEN operational_type = 'returned_expense' THEN -amount ELSE amount END), 0) as total_expenses,
                 COUNT(*) as expense_count
              FROM petty_expenses
              ${expWhere}`,
             expParams
         );
 
-        // 4. Payment breakdown for date period
+        // 4. Payment breakdown for date period (net of returns)
         const breakdownRows = this.db.all(
             `SELECT 
                 si.payment_method,
                 COUNT(*) as count,
-                COALESCE(SUM(si.final_total), 0) as total
+                COALESCE(SUM(CASE WHEN si.invoice_type = 'return' THEN -si.final_total ELSE si.final_total END), 0) as total
              FROM sales_invoices si
              ${dateWhere} AND si.status = 'completed'
              GROUP BY si.payment_method`,
@@ -681,6 +1019,62 @@ class PosService {
             },
             invoices: invoices || []
         };
+    }
+
+    /**
+     * Search products by category and optional keyword
+     */
+    searchProductsByCategory(categoryId = null, keyword = '', limit = 100) {
+        const conditions = ['p.is_active = 1'];
+        const params = [];
+
+        if (categoryId && categoryId !== 'all') {
+            conditions.push('p.category_id = ?');
+            params.push(categoryId);
+        }
+
+        if (keyword && keyword.trim() !== '') {
+            const query = `%${keyword.trim()}%`;
+            conditions.push('(p.barcode LIKE ? OR p.product_code LIKE ? OR p.item_name LIKE ? OR p.brand LIKE ?)');
+            params.push(query, query, query, query);
+        }
+
+        params.push(limit);
+        const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+        return this.db.all(
+            `SELECT p.*, c.name as category_name
+             FROM products p
+             LEFT JOIN categories c ON p.category_id = c.id
+             ${whereClause}
+             ORDER BY p.item_name ASC LIMIT ?`,
+            params
+        );
+    }
+
+    /**
+     * List inventory movements for auditing & tracking
+     */
+    listInventoryMovements(productId = null, limit = 50) {
+        if (productId) {
+            return this.db.all(
+                `SELECT im.*, p.item_name, p.barcode, u.display_name as user_name
+                 FROM inventory_movements im
+                 JOIN products p ON im.product_id = p.id
+                 JOIN users u ON im.user_id = u.id
+                 WHERE im.product_id = ?
+                 ORDER BY im.id DESC LIMIT ?`,
+                [productId, limit]
+            );
+        }
+        return this.db.all(
+            `SELECT im.*, p.item_name, p.barcode, u.display_name as user_name
+             FROM inventory_movements im
+             JOIN products p ON im.product_id = p.id
+             JOIN users u ON im.user_id = u.id
+             ORDER BY im.id DESC LIMIT ?`,
+            [limit]
+        );
     }
 }
 

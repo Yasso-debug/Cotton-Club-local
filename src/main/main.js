@@ -31,10 +31,13 @@ function initAppServices() {
     const treasuryService = new TreasuryService(db);
     const payrollService = new PayrollService(db, treasuryService);
 
+    const sessionService = new SessionService(db, treasuryService);
+    const posService = new PosService(db, sessionService);
+
     services = {
         auth: new AuthService(db),
-        session: new SessionService(db),
-        pos: new PosService(db),
+        session: sessionService,
+        pos: posService,
         inventory: new InventoryService(db),
         purchases: new PurchaseService(db, treasuryService),
         expenses: new ExpenseService(db),
@@ -77,17 +80,31 @@ function registerIpcHandlers() {
     handle('session:close', ({ sessionId, userId, actualCash, notes }) => services.session.closeSession(sessionId, userId, actualCash, notes));
     handle('session:list', ({ limit }) => services.session.listSessions(limit));
 
+    handle('session:check-auto-close', (userId) => services.session.checkAndRolloverShift(userId));
+    handle('session:ensure-active', (userId) => services.session.ensureActiveSession(userId));
+    handle('session:rollover', (userId) => services.session.checkAndRolloverShift(userId));
+    handle('session:shift-summary', (params) => services.session.getDailyShiftSummary(params));
+
     // POS
-    handle('pos:search-products', ({ query, limit }) => services.pos.searchProducts(query, limit));
+    handle('pos:search-products', ({ query, limit, categoryId }) => services.pos.searchProducts(query, limit, categoryId));
+    handle('pos:search-by-category', ({ categoryId, keyword, limit }) => services.pos.searchProductsByCategory(categoryId, keyword, limit));
     handle('pos:find-barcode', ({ barcode }) => services.pos.findProductByBarcode(barcode));
     handle('pos:search-customers', ({ query, limit }) => services.pos.searchCustomers(query, limit));
     handle('pos:quick-create-customer', (params) => services.pos.quickCreateCustomer(params?.data || params));
+    handle('customers:list', (params) => services.pos.listCustomers(params || {}));
+    handle('customers:stats', () => services.pos.getCustomerStats());
+    handle('customers:create', (params) => services.pos.createCustomer(params?.data || params));
+    handle('customers:update', ({ id, data }) => services.pos.updateCustomer(id, data));
+    handle('customers:delete', ({ id }) => services.pos.deleteCustomer(id));
+    handle('customers:invoices', ({ customerId, limit }) => services.pos.getCustomerInvoices(customerId, limit));
     handle('pos:get-drawer-cash', ({ sessionId }) => services.pos.getDrawerCash(sessionId));
     handle('pos:checkout', (saleData) => services.pos.checkout(saleData));
+    handle('pos:next-invoice-number', (params) => services.pos.getNextInvoiceNumber(params?.type || 'sale'));
     handle('pos:get-invoice', ({ id }) => services.pos.getInvoiceById(id));
     handle('pos:void-invoice', ({ invoiceId, managerUserId, reason }) => services.pos.voidInvoice(invoiceId, managerUserId, reason));
     handle('pos:list-recent', ({ limit }) => services.pos.listRecentInvoices(limit));
     handle('pos:invoices-dashboard', (filters) => services.pos.getInvoicesLogDashboard(filters));
+    handle('pos:list-inventory-movements', ({ productId, limit }) => services.pos.listInventoryMovements(productId, limit));
 
     // Inventory
     handle('inventory:overview', () => services.inventory.getCatalogOverview());
@@ -126,6 +143,9 @@ function registerIpcHandlers() {
     handle('expenses:add', ({ data, userId }) => services.expenses.addExpense(data, userId));
     handle('expenses:list-session', ({ sessionId }) => services.expenses.listSessionExpenses(sessionId));
     handle('expenses:list-all', ({ limit }) => services.expenses.listAllExpenses(limit));
+    handle('expenses:categories', () => services.expenses.getCategories());
+    handle('expenses:summary', (params) => services.expenses.getExpensesSummary(params || {}));
+    handle('expenses:analytics', (params) => services.expenses.getExpensesAnalytics(params?.period || 30));
 
     // Reports
     handle('reports:sales-summary', ({ startDate, endDate }) => services.reports.getSalesSummary(startDate, endDate));
@@ -158,10 +178,15 @@ function registerIpcHandlers() {
 
     // Treasury & Central Safe
     handle('treasury:get-balance', () => services.treasury.getBalance());
-    handle('treasury:deposit', ({ amount, sourceDestination, notes, userId }) => services.treasury.deposit(amount, sourceDestination, notes, userId));
-    handle('treasury:withdraw', ({ amount, destination, notes, userId }) => services.treasury.withdraw(amount, destination, notes, userId));
+    handle('treasury:deposit', ({ amount, sourceDestination, notes, userId, paymentMethod }) => services.treasury.deposit(amount, sourceDestination, notes, userId, paymentMethod || 'cash'));
+    handle('treasury:withdraw', ({ amount, destination, notes, userId, paymentMethod }) => services.treasury.withdraw(amount, destination, notes, userId, paymentMethod || 'cash'));
     handle('treasury:transfer-shift', ({ sessionId, amount, notes, userId }) => services.treasury.transferFromSession(sessionId, amount, notes, userId));
-    handle('treasury:list-transactions', ({ limit }) => services.treasury.listTransactions(limit));
+    handle('treasury:transfer-channel', ({ fromChannel, toChannel, amount, notes, userId }) => services.treasury.transferBetweenChannels(fromChannel, toChannel, amount, notes, userId));
+    handle('treasury:list-transactions', (params) => services.treasury.listTransactions(params));
+    handle('treasury:quick-disburse', ({ amount, paymentMethod, recipient, category, notes, userId }) => services.treasury.quickDisburse(amount, paymentMethod, recipient, category, notes, userId));
+    handle('treasury:get-analytics', () => services.treasury.getAnalyticsData());
+    handle('treasury:get-branch-transfers', ({ status }) => services.treasury.getBranchTransfers(status));
+    handle('treasury:get-branch-safes', () => services.treasury.getBranchSafesSummary());
 
     // Payroll & Staff
     handle('payroll:list-employees', ({ onlyActive }) => services.payroll.listEmployees(onlyActive));
@@ -170,8 +195,15 @@ function registerIpcHandlers() {
     handle('payroll:create-employee', ({ data, userId }) => services.payroll.createEmployee(data, userId));
     handle('payroll:update-employee', ({ id, data, userId }) => services.payroll.updateEmployee(id, data, userId));
     handle('payroll:delete-employee', ({ id, userId }) => services.payroll.deleteEmployee(id, userId));
-    handle('payroll:disburse-salary', ({ data, userId }) => services.payroll.disburseSalary(data, userId));
-    handle('payroll:list-payments', ({ limit }) => services.payroll.listSalaryPayments(limit));
+    handle('payroll:disburse-salary', ({ data, userId }) => services.payroll.disburseSalary(data, userId || data?.userId || data?.created_by));
+    handle('payroll:get-monthly-advances', (params) => services.payroll.getEmployeeMonthlyAdvances(params.employeeId || params.employee_id, params.month || params.period_month));
+    handle('payroll:get-period-advances', (params) => services.payroll.getEmployeePeriodAdvances(params.employeeId || params.employee_id, params.period || params));
+    handle('payroll:get-summary', ({ period }) => services.payroll.getPayrollSummary(period));
+    handle('payroll:check-payout-status', (params) => services.payroll.checkEmployeePayoutStatus(params.employeeId || params.employee_id, params.period || params.month || params.period_month));
+    handle('payroll:disburse-bulk', ({ payoutsList, channel, userId }) => services.payroll.disburseBulkPayroll(payoutsList, channel, userId));
+    handle('payroll:list-payments', (params) => services.payroll.listSalaryPayments(params));
+    handle('expenses:add-category', ({ name, subcategories }) => services.expenses.addCategory(name, subcategories));
+    handle('expenses:delete-category', ({ id }) => services.expenses.deleteCategory(id));
     handle('inventory:list-adjustments', ({ limit }) => services.inventory.listStockAdjustments(limit));
 
     // Settings
@@ -229,6 +261,42 @@ function createWindow() {
     });
 
     mainWindow.setMenu(null);
+
+    // Forward renderer console messages to main process stdout
+    mainWindow.webContents.on('console-message', (_event, _level, message) => {
+        console.log('[Renderer Console]', message);
+    });
+
+    // Global accelerator capture for F1 (Categories & Products lookup), F10 (Checkout & New Invoice), and F11 (Add Row)
+    let lastF1Time = 0;
+    let lastF10Time = 0;
+    let lastF11Time = 0;
+    mainWindow.webContents.on('before-input-event', (event, input) => {
+        if (input.type === 'keyDown' || input.type === 'rawKeyDown') {
+            const k = (input.key || '').toLowerCase();
+            const c = (input.code || '').toLowerCase();
+            const now = Date.now();
+            if (k === 'f1' || c === 'f1' || k === 'help') {
+                event.preventDefault();
+                if (now - lastF1Time > 200) {
+                    lastF1Time = now;
+                    mainWindow.webContents.send('app:f1-pressed');
+                }
+            } else if (k === 'f10' || c === 'f10') {
+                event.preventDefault();
+                if (now - lastF10Time > 200) {
+                    lastF10Time = now;
+                    mainWindow.webContents.send('app:f10-pressed');
+                }
+            } else if (k === 'f11' || c === 'f11') {
+                event.preventDefault();
+                if (now - lastF11Time > 200) {
+                    lastF11Time = now;
+                    mainWindow.webContents.send('app:f11-pressed');
+                }
+            }
+        }
+    });
 
     mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
 

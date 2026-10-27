@@ -151,9 +151,9 @@ class ReportService {
             "SELECT id, session_code, opened_at, opening_cash FROM daily_sessions WHERE status = 'open' LIMIT 1"
         );
 
-        // Today expenses
+        // Today expenses (net of returned expenses)
         const todayExpenses = this.db.get(
-            `SELECT COALESCE(SUM(amount), 0) as total_expenses
+            `SELECT COALESCE(SUM(CASE WHEN operational_type = 'returned_expense' THEN -amount ELSE amount END), 0) as total_expenses
              FROM petty_expenses
              WHERE date(created_at) = date(?)`,
             [today]
@@ -295,13 +295,14 @@ class ReportService {
             params
         );
 
-        // 5. Sellers Performance
+        // 5. Sellers Performance (Branch Sellers Only - Admin does NOT sell in branch)
         let sellerQuery = `
             SELECT 
                 u.id as user_id,
-                u.display_name,
+                COALESCE(e.full_name, u.display_name) as display_name,
                 u.username,
                 u.role,
+                COALESCE(e.job_title, 'مسؤول مبيعات بالفرع') as job_title,
                 COUNT(si.id) as invoices_count,
                 COALESCE(SUM(si.final_total), 0) as total_sales,
                 COALESCE(SUM(si.total_cost), 0) as total_cost,
@@ -310,16 +311,18 @@ class ReportService {
                 COALESCE(AVG(si.final_total), 0) as avg_order_value,
                 COALESCE(SUM(sli_sum.pieces), 0) as total_pieces
             FROM users u
+            LEFT JOIN employees e ON e.user_id = u.id
             JOIN sales_invoices si ON si.user_id = u.id AND si.status = 'completed' ${dateCond}
             LEFT JOIN (
                 SELECT invoice_id, SUM(quantity) as pieces 
                 FROM sale_line_items 
                 GROUP BY invoice_id
             ) sli_sum ON sli_sum.invoice_id = si.id
+            WHERE u.role != 'admin'
         `;
         const sellerQueryParams = [...dateParams];
         if (sellerId) {
-            sellerQuery += ' WHERE u.id = ?';
+            sellerQuery += ' AND u.id = ?';
             sellerQueryParams.push(sellerId);
         }
         sellerQuery += ' GROUP BY u.id ORDER BY total_sales DESC';
@@ -353,8 +356,68 @@ class ReportService {
             params
         );
 
-        // 7. Users list for seller filter dropdown
-        const allSellers = this.db.all('SELECT id, display_name, username, role FROM users ORDER BY display_name ASC', []);
+        // 7. Hourly Peak Trading Distribution (24 Hours)
+        const hourlyData = this.db.all(
+            `SELECT 
+                cast(strftime('%H', si.created_at) as integer) as hour_num,
+                COUNT(si.id) as count,
+                COALESCE(SUM(si.final_total), 0) as total_sales,
+                COALESCE(SUM(si.final_total - si.total_cost), 0) as total_profit
+            FROM sales_invoices si
+            ${whereClause}
+            GROUP BY hour_num
+            ORDER BY hour_num ASC`,
+            params
+        );
+
+        // Fill all 24 hours (00 to 23)
+        const hourlyDistribution = [];
+        const hourlyMap = new Map((hourlyData || []).map(h => [h.hour_num, h]));
+        for (let h = 0; h < 24; h++) {
+            const row = hourlyMap.get(h) || { hour_num: h, count: 0, total_sales: 0, total_profit: 0 };
+            hourlyDistribution.push(row);
+        }
+
+        // 8. Day of Week Distribution (Sunday=0 .. Saturday=6)
+        const dayNamesArabic = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+        const dowData = this.db.all(
+            `SELECT 
+                cast(strftime('%w', si.created_at) as integer) as day_index,
+                COUNT(si.id) as count,
+                COALESCE(SUM(si.final_total), 0) as total_sales,
+                COALESCE(SUM(si.final_total - si.total_cost), 0) as total_profit
+            FROM sales_invoices si
+            ${whereClause}
+            GROUP BY day_index
+            ORDER BY day_index ASC`,
+            params
+        );
+
+        const dowMap = new Map((dowData || []).map(d => [d.day_index, d]));
+        // Reorder starting from Saturday (6, 0, 1, 2, 3, 4, 5)
+        const weekOrder = [6, 0, 1, 2, 3, 4, 5];
+        const dayOfWeekDistribution = weekOrder.map(idx => {
+            const row = dowMap.get(idx) || { day_index: idx, count: 0, total_sales: 0, total_profit: 0 };
+            return {
+                ...row,
+                day_name: dayNamesArabic[idx]
+            };
+        });
+
+        // 9. Users list for seller filter dropdown (Branch Sellers Only - Admin does NOT sell in branch)
+        const allSellers = this.db.all(`
+            SELECT 
+                u.id, 
+                u.display_name, 
+                u.username, 
+                u.role,
+                e.full_name as employee_name,
+                e.job_title
+            FROM users u
+            LEFT JOIN employees e ON e.user_id = u.id
+            WHERE u.role != 'admin' AND u.is_active = 1
+            ORDER BY COALESCE(e.full_name, u.display_name) ASC
+        `, []);
 
         return {
             kpis: {
@@ -373,7 +436,9 @@ class ReportService {
             tenders: tenders || [],
             sellers: sellers || [],
             topProducts: topProducts || [],
-            allSellers: allSellers || []
+            allSellers: allSellers || [],
+            hourlyDistribution,
+            dayOfWeekDistribution
         };
     }
 }

@@ -5,6 +5,7 @@
   "main": "src/main/main.js",
   "scripts": {
     "start": "electron .",
+    "serve": "node src/server.js",
     "test": "node tests/run-all-tests.js"
   },
   "keywords": [

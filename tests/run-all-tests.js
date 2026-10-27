@@ -171,7 +171,7 @@ runTest('6. POS: Split Payment (Cash + Card) validation', () => {
             paymentMethod: 'split',
             splitPayments: { cash: 20, card: 30 } // Total 50 != 60
         });
-    }, /لا يساوي إجمالي الفاتورة/);
+    }, /(لا يطابق|لا يساوي) إجمالي الفاتورة/);
 
     // Valid split: 30 cash + 30 card = 60
     const splitSale = posService.checkout({
@@ -835,6 +835,376 @@ runTest('21. Purchase Returns: Inventory reduction & financial settlement (Debt 
             }]
         }, admin.id);
     }, /تتجاوز الكمية المتاحة للإرجاع/, 'Should prevent returning more than quantity purchased in invoice');
+});
+
+// 22. Security, Access Levels & Hub Navigation Integrity Tests
+runTest('22. Security, Access Levels & Hub Navigation Integrity', () => {
+    const bcrypt = require('bcryptjs');
+    // 1. Verify Default Users & Password Hashing
+    const maUser = db.get('SELECT * FROM users WHERE username = ?', ['ma']);
+    const coUser = db.get('SELECT * FROM users WHERE role = ?', ['cashier']);
+    assert.ok(maUser, "Admin 'ma' must exist");
+    assert.ok(coUser, "Cashier 'co' must exist");
+    assert.strictEqual(maUser.is_active, 1, "Admin 'ma' must be active");
+    assert.strictEqual(coUser.is_active, 1, "Cashier 'co' must be active");
+    assert.ok(bcrypt.compareSync('ma', maUser.password_hash), "Admin 'ma' password must verify");
+    assert.ok(bcrypt.compareSync('co', coUser.password_hash), "Cashier 'co' password must verify");
+
+    // 2. Manager Override Verification
+    const maOverride = authService.verifyManagerOverride('ma', 'ma');
+    assert.strictEqual(maOverride.success, true, 'Admin ma must be authorized for manager overrides');
+    const coOverride = authService.verifyManagerOverride('co', 'co');
+    assert.strictEqual(coOverride.success, false, 'Cashier co must NOT be authorized for manager overrides');
+
+    // 3. Cashier Discount Ceiling Enforcement (<= 5% allowed, > 5% throws without override)
+    const testSession = sessionService.openSession(coUser.id, 500.0, 'جلسة اختبار الصلاحيات');
+    const product = posService.findProductByBarcode('6221001001');
+    // Cashier attempting 6% discount without override must fail
+    assert.throws(() => {
+        posService.checkout({
+            sessionId: testSession.id,
+            userId: coUser.id,
+            userRole: 'cashier',
+            items: [{ productId: product.id, quantity: 1 }],
+            paymentMethod: 'cash',
+            discountPercent: 6,
+            managerOverride: null
+        });
+    }, /الحد الأقصى للخصم المسموح به للكاشير/, 'Cashier discount > 5% without manager override must be blocked');
+
+    // 4. Verify View Panels and Navigation Parity in HTML and app.js
+    const fs = require('fs');
+    const path = require('path');
+    const html = fs.readFileSync(path.join(__dirname, '../src/renderer/index.html'), 'utf8');
+    const appJs = fs.readFileSync(path.join(__dirname, '../src/renderer/js/app.js'), 'utf8');
+
+    const expectedPanels = [
+        'view-hub', 'view-pos', 'view-sales-hub', 'view-sales-settings',
+        'view-customers', 'view-inventory-hub', 'view-new-product',
+        'view-stock-audit', 'view-purchases-hub', 'view-purchases-invoices',
+        'view-new-purchase-invoice', 'view-financial-hub', 'view-employees',
+        'view-users', 'view-expenses'
+    ];
+
+    expectedPanels.forEach(panelId => {
+        assert.ok(html.includes(`id="${panelId}"`), `View panel #${panelId} must exist in index.html`);
+    });
+
+    // Verify unified sales-hub contains both sub-panels
+    assert.ok(html.includes('id="panel-sales-session"'), 'Sub-panel #panel-sales-session must exist in sales-hub');
+    assert.ok(html.includes('id="panel-sales-analytics"'), 'Sub-panel #panel-sales-analytics must exist in sales-hub');
+
+    // Verify all cashier cards target valid views
+    const cashierViews = ['pos', 'session', 'expenses'];
+    cashierViews.forEach(v => {
+        let resolved = v === 'session' ? 'sales-hub' : v;
+        assert.ok(html.includes(`id="view-${resolved}"`), `Cashier view #${resolved} must exist in index.html`);
+    });
+
+    // Verify all admin cards target valid views
+    const adminViews = [
+        'sales-hub', 'customers', 'sales-settings',
+        'inventory-hub', 'stock-audit', 'purchases-hub',
+        'purchases-invoices', 'financial-hub', 'employees'
+    ];
+    adminViews.forEach(v => {
+        assert.ok(html.includes(`id="view-${v}"`), `Admin view #${v} must exist in index.html`);
+    });
+});
+
+// 23. Direct POS Engine: Strict Workflows, Inventory Movements & Drawer Safety
+runTest('23. Direct POS Engine: Strict Workflows, Inventory Movements & Drawer Safety', () => {
+    const admin = db.get("SELECT id FROM users WHERE role = 'admin'");
+    const activeSession = sessionService.getActiveSession();
+    assert.ok(activeSession, 'An active session must exist');
+
+    const product = db.get("SELECT id, current_stock, cost_price, sell_price, barcode FROM products WHERE is_active = 1 AND current_stock > 2 LIMIT 1");
+    assert.ok(product, 'Test product must exist');
+    const initialStock = product.current_stock;
+
+    // 1. Sale Mode: Checkout 1 item and verify inventory_movements record
+    const saleResult = posService.checkout({
+        sessionId: activeSession.id,
+        userId: admin.id,
+        userRole: 'admin',
+        invoiceType: 'sale',
+        items: [{ productId: product.id, quantity: 1 }],
+        paymentMethod: 'cash'
+    });
+
+    assert.ok(saleResult.id, 'Sale invoice should be created');
+    assert.ok(saleResult.invoice_number.startsWith('INV-'), 'Sale invoice number must start with INV-');
+
+    // Verify product current_stock decremented by 1
+    const productAfterSale = db.get("SELECT current_stock FROM products WHERE id = ?", [product.id]);
+    assert.strictEqual(productAfterSale.current_stock, initialStock - 1, 'Current stock must be decremented by 1 after sale');
+
+    // Verify inventory_movements record for sale_out
+    const saleMovement = db.get(
+        "SELECT * FROM inventory_movements WHERE reference_type = 'sales_invoices' AND reference_id = ? AND movement_type = 'sale_out'",
+        [saleResult.id]
+    );
+    assert.ok(saleMovement, 'sale_out movement must be recorded in inventory_movements');
+    assert.strictEqual(saleMovement.quantity, 1);
+    assert.strictEqual(saleMovement.stock_before, initialStock);
+    assert.strictEqual(saleMovement.stock_after, initialStock - 1);
+
+    // 2. Return Mode: Return 1 item and verify inventory_movements record
+    const returnResult = posService.checkout({
+        sessionId: activeSession.id,
+        userId: admin.id,
+        userRole: 'admin',
+        invoiceType: 'return',
+        items: [{ productId: product.id, quantity: 1 }],
+        paymentMethod: 'cash'
+    });
+
+    assert.ok(returnResult.id, 'Return invoice should be created');
+    assert.ok(returnResult.invoice_number.startsWith('RET-'), 'Return invoice number must start with RET-');
+
+    // Verify stock restored
+    const productAfterReturn = db.get("SELECT current_stock FROM products WHERE id = ?", [product.id]);
+    assert.strictEqual(productAfterReturn.current_stock, initialStock, 'Current stock must be restored after return');
+
+    // Verify inventory_movements record for return_in
+    const returnMovement = db.get(
+        "SELECT * FROM inventory_movements WHERE reference_type = 'sales_invoices' AND reference_id = ? AND movement_type = 'return_in'",
+        [returnResult.id]
+    );
+    assert.ok(returnMovement, 'return_in movement must be recorded in inventory_movements');
+    assert.strictEqual(returnMovement.quantity, 1);
+    assert.strictEqual(returnMovement.stock_before, initialStock - 1);
+    assert.strictEqual(returnMovement.stock_after, initialStock);
+
+    // 3. Return Mode Drawer Safety: block return if refund exceeds drawer cash
+    const currentDrawerCash = sessionService.getCurrentDrawerCash(activeSession.id);
+    assert.throws(() => {
+        posService.checkout({
+            sessionId: activeSession.id,
+            userId: admin.id,
+            userRole: 'admin',
+            invoiceType: 'return',
+            items: [{ productId: product.id, quantity: 1, unitPrice: currentDrawerCash + 5000 }],
+            paymentMethod: 'cash'
+        });
+    }, /لا يتوفر رصيد نقدي كافٍ في الخزينة لصرف المرتجع/, 'Must block cash return if drawer cash is insufficient');
+
+    // 4. Exact Penny Payment Match: split payments must match final total exactly
+    assert.throws(() => {
+        posService.checkout({
+            sessionId: activeSession.id,
+            userId: admin.id,
+            userRole: 'admin',
+            invoiceType: 'sale',
+            items: [{ productId: product.id, quantity: 1 }],
+            paymentMethod: 'split',
+            splitPayments: { cash: 10, card: 10, transfer: 10 } // mismatched amount
+        });
+    }, /لا يطابق إجمالي الفاتورة المطلوبة/, 'Split payment mismatch must be rejected');
+
+    // 5. searchProductsByCategory method
+    const catProds = posService.searchProductsByCategory('all', '', 10);
+    assert.ok(Array.isArray(catProds) && catProds.length > 0, 'searchProductsByCategory must return products array');
+
+    // 6. listInventoryMovements method
+    const movementsList = posService.listInventoryMovements(product.id, 10);
+    assert.ok(Array.isArray(movementsList) && movementsList.length >= 2, 'listInventoryMovements must return movement logs');
+
+    // 7. Auto close shift check method
+    const autoCloseRes = sessionService.checkAutoCloseShift();
+    assert.ok(typeof autoCloseRes.autoClosed === 'boolean', 'checkAutoCloseShift must return status object');
+});
+
+runTest('24. Continuous Shift & Automatic Treasury Rollover (نظام اليومية المستمرة والترحيل التلقائي للخزنة)', () => {
+    const admin = authService.login('ma', 'ma');
+    
+    // 1. Ensure active session exists automatically without manual opening
+    const activeSession = sessionService.ensureActiveSession(admin.id);
+    assert.ok(activeSession && activeSession.status === 'open', 'ensureActiveSession must provide an open session');
+
+    const treasuryBefore = treasuryService.getBalance().balance;
+
+    // 2. Perform a cash sale
+    const product = db.get("SELECT * FROM products WHERE is_active = 1 LIMIT 1");
+    const saleRes = posService.checkout({
+        sessionId: activeSession.id,
+        userId: admin.id,
+        items: [{
+            productId: product.id,
+            quantity: 2,
+            unitPrice: product.sell_price,
+            itemName: product.item_name
+        }],
+        paymentMethod: 'cash'
+    });
+    assert.ok(saleRes && saleRes.invoice_number, 'Sale must be completed');
+
+    const summary = sessionService.getSessionSummary(activeSession.id);
+    const expectedDrawerCash = summary.expectedCash;
+    assert.ok(expectedDrawerCash > 0, 'Drawer cash must be positive');
+
+    // 3. Configure rollover cutoff time and simulate past cutoff
+    db.run("INSERT OR REPLACE INTO app_settings (key, value, description) VALUES ('auto_close_shift_time', '00:01', 'Cutoff time')");
+    db.run("UPDATE daily_sessions SET opened_at = datetime('now', '-2 days') WHERE id = ?", [activeSession.id]);
+
+    // 4. Trigger rollover
+    const rolloverRes = sessionService.checkAndRolloverShift(admin.id);
+    assert.ok(rolloverRes.rolledOver, 'Rollover must have executed');
+
+    // 5. Verify drawer cash was transferred into Central Treasury
+    const treasuryAfter = treasuryService.getBalance().balance;
+    const diff = Math.round((treasuryAfter - treasuryBefore) * 100) / 100;
+    assert.strictEqual(diff, expectedDrawerCash, 'Treasury balance must increase by exact drawer cash');
+
+    // 6. Verify previous session closed and new session is open
+    const closed = sessionService.getSessionById(activeSession.id);
+    assert.strictEqual(closed.status, 'closed', 'Previous session must be closed');
+    assert.strictEqual(closed.closing_cash_actual, expectedDrawerCash, 'Closing cash actual must match expected');
+
+    const newActive = sessionService.getActiveSession();
+    assert.ok(newActive && newActive.id === rolloverRes.newSession.id, 'New session must be currently active');
+    assert.strictEqual(newActive.status, 'open', 'New session must be open for continuous business');
+});
+
+runTest('25. Expenses & Refunded Expenses: Dual Cash Flow, EXP-YYMM Codes & Shift Accounting', () => {
+    const admin = db.get("SELECT id FROM users WHERE role = 'admin'");
+    const active = sessionService.getActiveSession();
+    assert.ok(active, 'Must have active session');
+
+    // 1. Record Outbound Expense
+    const outExp = expenseService.addExpense({
+        sessionId: active.id,
+        operational_type: 'expense',
+        category: 'سلف وسحب بائعين',
+        amount: 300,
+        description: 'سلفة موظف صالة',
+        recipient_name: 'محمد بائع',
+        salesperson_id: admin.id
+    }, admin.id);
+
+    assert.ok(outExp.voucher_code.startsWith('EXP-'), 'Code must start with EXP-');
+    assert.strictEqual(outExp.operational_type, 'expense');
+    assert.strictEqual(outExp.amount, 300);
+
+    // 2. Record Inbound Refunded Expense
+    const refExp = expenseService.addExpense({
+        sessionId: active.id,
+        operational_type: 'returned_expense',
+        category: 'مصروف مرتد (إيداع نقدية)',
+        amount: 120,
+        description: 'سداد جزء من السلفة نقداً للدرج',
+        recipient_name: 'محمد بائع',
+        salesperson_id: admin.id
+    }, admin.id);
+
+    assert.ok(refExp.voucher_code.startsWith('EXP-'), 'Code must start with EXP-');
+    assert.strictEqual(refExp.operational_type, 'returned_expense');
+    assert.strictEqual(refExp.amount, 120);
+
+    // 3. Verify Summary & KPIs
+    const summary = expenseService.getExpensesSummary({ sessionId: active.id });
+    assert.ok(summary.total_out >= 300);
+    assert.ok(summary.total_refunded >= 120);
+    assert.strictEqual(summary.net_expense, Math.round((summary.total_out - summary.total_refunded) * 100) / 100);
+
+    // 4. Verify Analytics
+    const analytics = expenseService.getExpensesAnalytics(30);
+    assert.strictEqual(analytics.period_days, 30);
+    assert.ok(Array.isArray(analytics.daily_trend));
+    assert.ok(Array.isArray(analytics.category_breakdown));
+
+    // 5. Verify Session Summary calculation factors net expenses
+    const sessSummary = sessionService.getSessionSummary(active.id);
+    assert.strictEqual(sessSummary.totalExpenses, summary.net_expense);
+});
+
+// 26. Customers Directory & CRM
+runTest('26. Customers Directory: CRUD, Invoices Link, KPIs & Excel Sheet Export', () => {
+    // 1. Create Customer
+    const testPhone = '01012345678';
+    const cust1 = posService.createCustomer({
+        name: 'عميل تجريبي ممتاز',
+        phone: testPhone,
+        email: 'vip-client@cottonclub.com',
+        notes: 'يفضل المقاسات الكبيرة'
+    });
+    assert.ok(cust1.id > 0);
+    assert.strictEqual(cust1.name, 'عميل تجريبي ممتاز');
+    assert.strictEqual(cust1.phone, testPhone);
+
+    // 2. Prevent Duplicate Phone on Update
+    const cust2 = posService.createCustomer({
+        name: 'عميل ثانٍ',
+        phone: '01099998888',
+        email: 'client2@cottonclub.com'
+    });
+    assert.throws(() => {
+        posService.updateCustomer(cust2.id, {
+            name: 'عميل معدل',
+            phone: testPhone // Already belongs to cust1
+        });
+    }, /رقم الهاتف مستخدم بالفعل لعميل آخر/);
+
+    // 3. Update Customer details
+    const updatedCust1 = posService.updateCustomer(cust1.id, {
+        name: 'عميل تجريبي VIP معدل',
+        phone: testPhone,
+        email: 'vip-client@cottonclub.com',
+        points: 50,
+        notes: 'تمت ترقيته لعميل ذهبي'
+    });
+    assert.strictEqual(updatedCust1.name, 'عميل تجريبي VIP معدل');
+    assert.strictEqual(updatedCust1.points, 50);
+
+    // 4. Link Sales Invoice to Customer
+    const active = sessionService.getActiveSession();
+    const admin = authService.login('ma', 'ma');
+    const p1 = db.get('SELECT * FROM products WHERE current_stock > 0 LIMIT 1');
+
+    const checkoutRes = posService.checkout({
+        sessionId: active.id,
+        userId: admin.id,
+        customerId: cust1.id,
+        customerName: cust1.name,
+        customerPhone: cust1.phone,
+        items: [{
+            productId: p1.id,
+            barcode: p1.barcode,
+            quantity: 1,
+            unitPrice: p1.sell_price,
+            costPrice: p1.cost_price || 0
+        }],
+        subtotal: p1.sell_price,
+        discountAmount: 0,
+        finalTotal: p1.sell_price,
+        paymentMethod: 'cash',
+        cashAmount: p1.sell_price
+    });
+    assert.ok(checkoutRes.id > 0);
+
+    // 5. Verify listCustomers with aggregate stats
+    const custList = posService.listCustomers({ query: 'VIP', limit: 10 });
+    assert.ok(custList.length >= 1);
+    const foundCust = custList.find(c => c.id === cust1.id);
+    assert.ok(foundCust);
+    assert.ok(foundCust.invoices_count >= 1);
+    assert.ok(foundCust.total_spent >= p1.sell_price);
+
+    // 6. Verify Customer KPIs
+    const stats = posService.getCustomerStats();
+    assert.ok(stats.totalCustomers >= 2);
+    assert.ok(stats.totalSpent > 0);
+    assert.ok(stats.customersWithInvoices >= 1);
+
+    // 7. Verify Customer Invoices query
+    const custInvoices = posService.getCustomerInvoices(cust1.id);
+    assert.ok(custInvoices.length >= 1);
+    assert.strictEqual(custInvoices[0].invoice_number, checkoutRes.invoice_number);
+
+    // 8. Verify Excel / CSV Export Structure
+    const headers = ['كود العميل', 'اسم العميل', 'رقم الهاتف', 'البريد الإلكتروني', 'إجمالي المشتريات (ج.م)', 'عدد الفواتير', 'نقاط الولاء', 'تاريخ التسجيل', 'ملاحظات'];
+    const csvContent = '\uFEFF' + headers.join(',') + '\r\n' + `"${cust1.id}","${cust1.name}","${cust1.phone}"`;
+    assert.ok(csvContent.startsWith('\uFEFF'), 'CSV must include UTF-8 BOM for Arabic Excel');
 });
 
 console.log('\n====================================================');

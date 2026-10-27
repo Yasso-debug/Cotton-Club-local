@@ -364,31 +364,17 @@ class PurchaseService {
             throw new Error(`مجموع مبالغ الدفع المقسم (${sumParts} ج.م) لا يتطابق مع إجمالي السداد المطلوب (${total} ج.م)`);
         }
 
-        // 4.1 Strict Solvency Check for Cash portion
+        // 4.1 Strict Solvency Check for Central Treasury Cash portion
         if (cashPart > 0) {
-            const treasuryBalance = this.treasuryService.getBalance().balance;
-            if (cashPart > treasuryBalance) {
-                throw new Error(`رصيد الكاش بالخزينة المركزية غير كافٍ. المتاح حالياً: ${treasuryBalance.toFixed(2)} ج.م والمطلوب سداده: ${cashPart.toFixed(2)} ج.م`);
+            const treasuryBalances = this.treasuryService.getBalance();
+            const availableCash = treasuryBalances.cashBalance !== undefined ? treasuryBalances.cashBalance : treasuryBalances.balance;
+            if (cashPart > availableCash) {
+                throw new Error(`رصيد الكاش بالخزينة المركزية غير كافٍ. المتاح حالياً: ${availableCash.toFixed(2)} ج.م والمطلوب سداده: ${cashPart.toFixed(2)} ج.م`);
             }
         }
 
         return this.db.transaction((db) => {
-            // 1. Deduct cash from Central Treasury if cash portion > 0
-            if (cashPart > 0) {
-                db.run(
-                    `INSERT INTO central_treasury_transactions (
-                        transaction_type, amount, source_destination, notes, performed_by
-                    ) VALUES ('withdraw', ?, ?, ?, ?)`,
-                    [
-                        cashPart,
-                        `سداد مورد: ${supplier.name}`,
-                        notes ? `دفعة مورد - ${notes}` : 'سداد دفعة للمورد من الخزينة المركزية',
-                        userId || 1
-                    ]
-                );
-            }
-
-            // 2. Generate sequential voucher number SPAY-YYYYMMDD-XXXX
+            // 1. Generate sequential voucher number SPAY-YYYYMMDD-XXXX
             const todayStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
             const countRow = db.get(
                 "SELECT COUNT(*) as count FROM supplier_payments WHERE voucher_number LIKE ?",
@@ -396,6 +382,22 @@ class PurchaseService {
             );
             const seq = String((countRow?.count || 0) + 1).padStart(4, '0');
             const voucherNumber = `SPAY-${todayStr}-${seq}`;
+
+            // 2. Deduct cash from Central Treasury if cash portion > 0
+            if (cashPart > 0) {
+                db.run(
+                    `INSERT INTO central_treasury_transactions (
+                        transaction_type, amount, payment_method, source_destination, reference_id, notes, performed_by
+                    ) VALUES ('supplier_payment', ?, 'cash', ?, ?, ?, ?)`,
+                    [
+                        cashPart,
+                        `سداد مورد: ${supplier.name}`,
+                        voucherNumber,
+                        notes ? `دفعة مورد - ${notes}` : `سداد دفعة للمورد من الخزينة المركزية (${voucherNumber})`,
+                        userId || 1
+                    ]
+                );
+            }
 
             // 3. Record payment in supplier_payments
             const breakdownJson = JSON.stringify({
@@ -592,21 +594,23 @@ class PurchaseService {
             // Solvency check and central treasury deduction if cash part > 0
             if (paid > 0) {
                 const voucherNumber = `SPAY-${today}-${seq}-P`;
-                const payFromTreasury = purchaseData.payFromTreasury === true;
+                const payFromTreasury = purchaseData.payFromTreasury !== false;
 
                 if (cashPart > 0 && payFromTreasury) {
-                    const treasuryBal = this.treasuryService.getBalance().balance;
-                    if (cashPart > treasuryBal) {
-                        throw new Error(`رصيد الخزنة المركزية غير كافٍ لسداد الدفعة النقدية (${cashPart.toFixed(2)} ج.م). المتاح حالياً: ${treasuryBal.toFixed(2)} ج.م`);
+                    const treasuryBal = this.treasuryService.getBalance();
+                    const availableCash = treasuryBal.cashBalance !== undefined ? treasuryBal.cashBalance : treasuryBal.balance;
+                    if (cashPart > availableCash) {
+                        throw new Error(`رصيد الخزنة المركزية غير كافٍ لسداد الدفعة النقدية (${cashPart.toFixed(2)} ج.م). المتاح حالياً: ${availableCash.toFixed(2)} ج.م`);
                     }
                     db.run(
                         `INSERT INTO central_treasury_transactions (
-                            transaction_type, amount, source_destination, notes, performed_by
-                        ) VALUES ('withdraw', ?, ?, ?, ?)`,
+                            transaction_type, amount, payment_method, source_destination, reference_id, notes, performed_by
+                        ) VALUES ('purchase_payment', ?, 'cash', ?, ?, ?, ?)`,
                         [
                             cashPart,
-                            `سداد فاتورة شراء: ${supplier.name} (${invoiceNumber})`,
-                            notes ? `دفعة نقدية لفاتورة شراء - ${notes}` : `سداد دفعة فورية لفاتورة شراء ${invoiceNumber}`,
+                            `شراء بضاعة (سداد فوري كاش): ${supplier.name} (${invoiceNumber})`,
+                            invoiceNumber,
+                            notes ? `سداد فاتورة شراء نقدية - ${notes}` : `سداد دفعة فورية لفاتورة شراء ${invoiceNumber}`,
                             userId || 1
                         ]
                     );
@@ -876,8 +880,8 @@ class PurchaseService {
             if (cashPart > 0) {
                 db.run(
                     `INSERT INTO central_treasury_transactions (
-                        transaction_type, amount, source_destination, notes, performed_by
-                    ) VALUES ('deposit', ?, ?, ?, ?)`,
+                        transaction_type, amount, payment_method, source_destination, notes, performed_by
+                    ) VALUES ('deposit', ?, 'cash', ?, ?, ?)`,
                     [
                         cashPart,
                         `استرداد نقدي - مرتجع مشتريات: ${supplier.name} (${returnNumber})`,
